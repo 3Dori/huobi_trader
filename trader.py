@@ -1,0 +1,169 @@
+from constants import *
+
+from huobi.constant import *
+from huobi.utils import *
+from huobi.client.algo import AlgoClient
+from huobi.client.trade import TradeClient
+from huobi.client.account import AccountClient
+from huobi.client.market import MarketClient
+
+import numpy as np
+
+import time
+
+
+class Trader(object):
+    def __init__(self, api_key, secret_key, account_id):
+        self.account_id = account_id
+        self.trade_client = TradeClient(api_key=api_key, secret_key=secret_key)
+        self.account_client = AccountClient(api_key=api_key, secret_key=secret_key)
+        self.algo_client = AlgoClient(api_key=api_key, secret_key=secret_key)
+        self.market_client = MarketClient()
+        self.holds = {}
+        self.total_fee = 0
+        self.stop_loss_threads = []
+
+    def get_balance(self, symbol='usdt'):
+        balances = self.account_client.get_balance(self.account_id)
+        for balance in balances:
+            if balance.currency == symbol:
+                return float(balance.balance)
+    
+    def get_newest_price(self, symbol):
+        newest_trade = self.market_client.get_market_trade(symbol=symbol)[0]
+        return newest_trade.price
+
+    def generate_orders(self, symbol, prices, amounts, order_type):
+        client_order_id_header = str(int(time.time()))
+        order_ids = [f'{client_order_id_header}{symbol}{i:02d}' for i in range(len(prices))]
+        pair = transaction_pairs[symbol]
+        price_scale, amount_scale = pair.price_scale, pair.amount_scale
+        orders = [
+            {
+                'account_id': self.account_id,
+                'symbol': symbol,
+                'order_type': order_type,
+                'source': OrderSource.API,
+                'amount': f'{amount:.{amount_scale}f}',
+                'price': f'{price:.{price_scale}f}',
+                'client_order_id': order_id
+            }
+            for amount, price, order_id in zip(amounts, prices, order_ids)
+        ]
+        return orders
+
+    @staticmethod
+    def get_normalized_amounts_with_eagerness(num_orders, eagerness):
+        amounts = np.geomspace(eagerness**num_orders, 1, num_orders)
+        return amounts / np.sum(amounts)
+
+    @staticmethod
+    def get_prices(lower_price, upper_price, num_orders, order_type):
+        if order_type == OrderType.BUY_LIMIT:
+            prices = np.linspace(upper_price, lower_price, num_orders)
+        elif order_type == OrderType.SELL_LIMIT:
+            prices = np.linspace(lower_price, upper_price, num_orders)
+        else:
+            raise ValueError(f'Unknown order type {order_type}')
+        return prices
+
+    def submit_orders(self, orders):
+        results = []
+        for i in range(0, len(orders), MAX_ORDER_NUM):
+            create_results = self.trade_client.batch_create_order(order_config_list=orders[i:i+MAX_ORDER_NUM])
+            results += create_results
+        return results
+
+    def generate_buy_queue_orders(self, symbol, lower_price, upper_price, num_orders, total_amount=None, total_amount_fraction=None, eagerness=1):
+        prices = self.get_prices(lower_price, upper_price, num_orders, OrderType.BUY_LIMIT)
+        normalized_amounts = self.get_normalized_amounts_with_eagerness(num_orders, eagerness)
+        if total_amount is not None:
+            amounts = normalized_amounts * total_amount
+        elif total_amount_fraction is not None:
+            balance = self.get_balance(transaction_pairs[symbol].base) * total_amount_fraction
+            amounts = normalized_amounts * (balance / prices * normalized_amounts).sum()
+        orders = self.generate_orders(symbol, prices, amounts, OrderType.BUY_LIMIT)
+        return orders
+
+    def create_smart_buy_queue(self, symbol, lower_price, upper_price, num_orders, profit=1.05, total_amount=None, total_amount_fraction=None, eagerness=1):
+        orders = self.generate_buy_queue_orders(symbol, lower_price, upper_price, num_orders, total_amount, total_amount_fraction, eagerness)
+        results = self.submit_orders(orders)
+        LogInfo.output_list(results)
+        client_order_id_header = str(int(time.time()))
+        price_scale = transaction_pairs[symbol].price_scale
+        algo_order_ids = []
+        for i, order in enumerate(orders):
+            client_order_id = f'{client_order_id_header}{symbol}{i:02d}'
+            order_price = float(order['price']) * profit
+            stop_price = order_price * 0.999
+            order_id = self.algo_client.create_order(
+                account_id=self.account_id, symbol=symbol, order_side=OrderSide.SELL, order_type=AlgoOrderType.LIMIT,
+                order_size=order['amount'], order_price=f'{order_price:.{price_scale}f}', stop_price=f'{stop_price:.{price_scale}f}',
+                client_order_id=client_order_id)
+            algo_order_ids.append(client_order_id)
+        return results, orders, algo_order_ids
+
+    def cancel_all_algo_orders(self, order_ids):
+        results = []
+        for order_id in order_ids:
+            result = self.algo_client.cancel_orders(order_id)
+            results.append(result)
+        return results
+
+    def create_buy_queue(self, symbol, lower_price, upper_price, num_orders, total_amount=None, total_amount_fraction=None, eagerness=1):
+        newest_price = self.get_newest_price
+        if lower_price >= upper_price:
+            raise ValueError('lower_price should be less than upper_price')
+        orders = self.generate_buy_queue_orders(symbol, lower_price, upper_price, num_orders, total_amount, total_amount_fraction, eagerness)
+        results = self.submit_orders(orders)
+        LogInfo.output_list(results)
+        return results, orders
+
+    def create_sell_queue(self, symbol, lower_price, upper_price, num_orders, total_amount=None, total_amount_fraction=None, eagerness=1):
+        if lower_price >= upper_price:
+            raise ValueError('lower_price should be less than upper_price')
+        prices = self.get_prices(lower_price, upper_price, num_orders, OrderType.SELL_LIMIT)
+        normalized_amounts = self.get_normalized_amounts_with_eagerness(num_orders, eagerness)
+        if total_amount is not None:
+            amounts = normalized_amounts * total_amount
+        elif total_amount_fraction is not None:
+            balance = self.get_balance(transaction_pairs[symbol].target) * total_amount_fraction
+            amounts = normalized_amounts * balance
+        orders = self.generate_orders(symbol, prices, amounts, OrderType.SELL_LIMIT)
+        results = self.submit_orders(orders)
+        LogInfo.output_list(results)
+        return results, orders
+
+    def cancel_orders(self, symbol, order_ids):
+        for i in range(0, len(order_ids), MAX_CANCEL_ORDER_NUM):
+            cancel_result = self.trade_client.cancel_orders(symbol, order_ids[i:i+MAX_CANCEL_ORDER_NUM])
+            LogInfo.output(cancel_result)
+        return cancel_result
+
+    def cancel_all_orders_with_type(self, symbol, type):
+        account_spot = self.account_client.get_account_by_type_and_symbol(AccountType.SPOT, symbol=None)
+        orders = self.trade_client.get_open_orders(symbol=symbol, account_id=account_spot.id, direct=QueryDirection.NEXT)
+        sell_order_ids = [str(order.id) for order in orders if order.type == type]
+        if len(sell_order_ids) == 0:
+            return
+        return self.cancel_orders(symbol, sell_order_ids)
+
+    def cancel_all_buy_orders(self, symbol):
+        return self.cancel_all_orders_with_type(symbol, OrderType.BUY_LIMIT)
+
+    def cancel_all_sell_orders(self, symbol):
+        return self.cancel_all_orders_with_type(symbol, OrderType.SELL_LIMIT)
+
+    def sell_all_at_market_price(self, symbol):
+        pair = transaction_pairs[symbol]
+        safe_sell_amount = self.get_balance(pair.target) * 0.99
+        sell_amount = f'{safe_sell_amount:.{pair.amount_scale}f}'
+        client_order_id = f'{int(time.time())}{symbol}{00}'
+        return self.trade_client.create_order(
+            symbol=symbol, account_id=self.account_id, order_type=OrderType.SELL_MARKET, price=None,
+            amount=sell_amount, source=OrderSource.API, client_order_id=client_order_id)
+
+    def start_new_stop_loss_thread(self, symbol, stop_loss_price, interval=10):
+        from stop_loss import StopLoss
+        thread = StopLoss(symbol, self, stop_loss_price, interval)
+        self.stop_loss_threads.append(thread)

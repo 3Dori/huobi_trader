@@ -16,10 +16,10 @@ transaction_pairs = {
     'eosusdt': TransactionPair(4, 4, 'eos', 'usdt'),
     'eos3susdt': TransactionPair(4, 4, 'eos3s', 'usdt'),
     'linkusdt': TransactionPair(4, 2, 'link', 'usdt'),
-    'link3susdt': TransactionPair(8, 4, 'link3s', 'usdt'),
-    'ethbtc': TransactionPair(6, 4, 'eth', 'btc')
+    'link3susdt': TransactionPair(8, 4, 'link3s', 'usdt')
 }
 
 
+FEE_RATE = 0.002
 MAX_ORDER_NUM = 10
 MAX_CANCEL_ORDER_NUM = 50
