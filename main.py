@@ -1,6 +1,8 @@
 from constants import *
 from trader import Trader
 
+from huobi.constant import *
+
 import numpy as np
 
 import time
