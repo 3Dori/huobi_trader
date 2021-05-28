@@ -30,7 +30,19 @@ class Trader(object):
         for balance in balances:
             if balance.currency == symbol:
                 return float(balance.balance)
-    
+
+    def get_balance_pair(self, symbol):
+        pair = transaction_pairs[symbol]
+        target, base = pair.target, pair.base
+        balances = self.account_client.get_balance(self.account_id)
+        target_balance, base_balance = 0, 0
+        for balance in balances:
+            if balance.currency == target:
+                target_balance = float(balance.balance)
+            elif balance.currency == base:
+                base_balance = float(balance.balance)
+        return target_balance, base_balance
+
     def get_newest_price(self, symbol):
         newest_trade = self.market_client.get_market_trade(symbol=symbol)[0]
         return newest_trade.price
@@ -145,7 +157,8 @@ class Trader(object):
         order_id = self.trade_client.create_order(
             symbol=symbol, account_id=self.account_id, order_type=order_type, price=price,
             amount=amount, source=OrderSource.API, client_order_id=client_order_id)
-        return self.get_order(order_id)
+        return order_id
+        # return self.get_order(order_id)
 
     def create_buy_queue(self, symbol, lower_price, upper_price, num_orders, total_amount=None, total_amount_fraction=None, distr=None):
         newest_price = self.get_newest_price(symbol)
