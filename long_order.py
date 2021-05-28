@@ -34,11 +34,11 @@ class LongOrder(object):
                 self.trader.long_order_threads.remove(self)
                 break
             order = self.trader.get_order(self.order_id)
-            if order.canceled_at != 0:
+            if order.state == OrderState.CANCELED:
                 print(f'{self} Order canceled')
                 self.trader.long_order_threads.remove(self)
                 break
-            if order.finished_at != 0:
+            if order.state == OrderState.FILLED:
                 newest_price = self.trader.get_newest_price(self.symbol)
                 if newest_price >= self.buy_price * self.profit:
                     try:

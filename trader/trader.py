@@ -1,4 +1,5 @@
 from constants import *
+from base_trader import BaseTrader
 
 from huobi.constant import *
 from huobi.utils import *
@@ -13,8 +14,9 @@ import scipy.stats as stats
 import time
 
 
-class Trader(object):
+class Trader(BaseTrader):
     def __init__(self, api_key, secret_key, account_id):
+        super().__init__()
         self.account_id = account_id
         self.trade_client = TradeClient(api_key=api_key, secret_key=secret_key)
         self.account_client = AccountClient(api_key=api_key, secret_key=secret_key)
@@ -88,7 +90,7 @@ class Trader(object):
             return Trader.get_normalized_amounts_with_normal_distr(num_oders, distr.get('skewness', 1.0))
 
     @staticmethod
-    def get_prices(lower_price, upper_price, num_orders, order_type):
+    def get_price_interval(lower_price, upper_price, num_orders, order_type):
         if order_type == OrderType.BUY_LIMIT:
             prices = np.linspace(upper_price, lower_price, num_orders)
         elif order_type == OrderType.SELL_LIMIT:
@@ -105,7 +107,7 @@ class Trader(object):
         return results
 
     def generate_buy_queue_orders(self, symbol, lower_price, upper_price, num_orders, total_amount=None, total_amount_fraction=None, distr=None):
-        prices = self.get_prices(lower_price, upper_price, num_orders, OrderType.BUY_LIMIT)
+        prices = self.get_price_interval(lower_price, upper_price, num_orders, OrderType.BUY_LIMIT)
         normalized_amounts = self.get_normalized_amounts_with_distr(num_orders, distr)
         if total_amount is not None:
             amounts = normalized_amounts * total_amount
@@ -177,7 +179,7 @@ class Trader(object):
             raise ValueError('Unable to sell at a price lower the the market price')
         if lower_price >= upper_price:
             raise ValueError('lower_price should be less than upper_price')
-        prices = self.get_prices(lower_price, upper_price, num_orders, OrderType.SELL_LIMIT)
+        prices = self.get_price_interval(lower_price, upper_price, num_orders, OrderType.SELL_LIMIT)
         normalized_amounts = self.get_normalized_amounts_with_distr(num_orders, distr)
         if total_amount is not None:
             amounts = normalized_amounts * total_amount
