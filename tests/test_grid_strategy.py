@@ -21,6 +21,8 @@ class GridStrategyTester(unittest.TestCase):
                     self.assertIsNotNone(order)
                 else:
                     self.assertIsNone(order)
+            self.assertAlmostEqual(strategy.base_asset, trader.balance['usdt'])
+            self.assertAlmostEqual(strategy.target_asset, trader.balance['eth'])
 
         prices = [2501, 2510, 2610, 2710, 2610, 2710, 2610, 2510]
         usdt = 1000
@@ -54,11 +56,11 @@ def basic_backtest_grid_strategy(seed=None):
     init_price = 2800
     prices = brownian_motion(init_price, 10000, 0.1, sigma=5)
     usdt = 1000
-    eth = 0.3571
+    eth = 0.2
     original_asset = usdt + eth * init_price
     trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
-    strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2400, 3100, 10, prices[0])
-    # print(f'original asset: {original_asset}')
+    strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2500, 3000, 14, prices[0],
+                            transaction_strategy='half')
     for i, price in enumerate(prices[1:]):
         try:
             trader.feed({'ethusdt': price})
@@ -66,28 +68,25 @@ def basic_backtest_grid_strategy(seed=None):
         except:
             print(i)
             raise
-    # print(f'final price: {prices[-1]}')
-    # print(f'final asset: {strategy.get_total_asset(in_base=True)}')
-    # print(f'Hold: {original_asset * prices[-1] / prices[0]}')
     hold_asset = original_asset * prices[-1] / prices[0]
     strategy_asset = strategy.get_total_asset(in_base=True)
     return prices[-1], hold_asset, strategy_asset
 
 
 def backtest_grid_strategy(sims=50):
-    prices, hold_assets, strategy_assets = [], [], []
-    for sim in range(sims):
-        try:
-            price, hold_asset, strategy_asset = basic_backtest_grid_strategy(seed=sim)
-            prices.append(price)
-            hold_assets.append(hold_asset)
-            strategy_assets.append(strategy_asset)
-        except:
-            print(sim)
-    plt.plot(prices, hold_assets)
-    plt.scatter(prices, strategy_assets)
-    plt.show()
-    # basic_backtest_grid_strategy(1)
+    # prices, hold_assets, strategy_assets = [], [], []
+    # for sim in range(sims):
+    #     try:
+    #         price, hold_asset, strategy_asset = basic_backtest_grid_strategy(seed=sim)
+    #         prices.append(price)
+    #         hold_assets.append(hold_asset)
+    #         strategy_assets.append(strategy_asset)
+    #     except:
+    #         print(sim)
+    # plt.plot(prices, hold_assets)
+    # plt.scatter(prices, strategy_assets)
+    # plt.show()
+    basic_backtest_grid_strategy(0)
 
 
 if __name__ == '__main__':

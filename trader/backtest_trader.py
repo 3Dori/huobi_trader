@@ -18,9 +18,13 @@ class BackTestOrder(object):
         self.filled_amount = 0
         self.filled_fees = 0
         self.filled_cash_amount = 0
-        self.finished_at = 0 if order_type in (OrderType.BUY_LIMIT, OrderType.SELL_LIMIT) else 1
+        self.finished_at = 0
         self.canceled_at = 0
         self.state = OrderState.SUBMITTED
+        if order_type == OrderType.BUY_MARKET:
+            self.set_finished(amount, amount * BaseTrader.FEE * 2, amount * price)
+        elif order_type == OrderType.SELL_MARKET:
+            self.set_finished(amount, amount * price * BaseTrader.FEE * 2, amount * price)
 
     def set_finished(self, filled_amount, filled_fees, filled_cash_amount):
         self.finished_at = 1
@@ -70,11 +74,11 @@ class BacktestTrader(BaseTrader):
         if type(price) not in (float, int, np.float_):
             raise TypeError('price must be of float or int type')
         if order_type == OrderType.BUY_MARKET:
-            self.balance[pair.target] += amount * (1 - BaseTrader.FEE)
+            self.balance[pair.target] += amount * (1 - BaseTrader.FEE * 2)
             self.balance[pair.base] -= amount * price
         elif order_type == OrderType.SELL_MARKET:
             self.balance[pair.target] -= amount
-            self.balance[pair.base] += amount * price * (1 - BaseTrader.FEE)
+            self.balance[pair.base] += amount * price * (1 - BaseTrader.FEE * 2)
 
         order_id = str(uuid.uuid4())
         order = BackTestOrder(order_id, symbol, order_type, price, amount)

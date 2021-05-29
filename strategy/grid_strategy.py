@@ -14,7 +14,7 @@ class GridStrategy(object):
     DOWN = -1
 
     def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price, num_grids,
-                 newest_price, grid_type='arithmetic'):
+                 newest_price, grid_type='arithmetic', transaction_strategy='even'):
         self.trader = trader
         self.symbol = symbol
         target_balance, base_balance = self.trader.get_balance_pair(symbol)
@@ -37,7 +37,14 @@ class GridStrategy(object):
             self.grids = np.geomspace(lower_price, upper_price, num_grids + 1)
         else:
             raise ValueError(f'Unknown grid_type: {grid_type}')
+        minimum_profit = self.grids[-1] / self.grids[-2] - 1
+        if minimum_profit <= BaseTrader.FEE * 2:
+            raise ValueError(f'Profit is too small: {minimum_profit}')
         self.orders = [None] * len(self.grids)
+
+        if transaction_strategy not in ('even', 'half'):
+            raise ValueError(f'Unknown transaction_strategy: {transaction_strategy}')
+        self.transaction_strategy = transaction_strategy
 
         if upper_price <= self.newest_price or lower_price >= self.newest_price:
             raise RuntimeError('Unable to start a transaction because the current price is beyond the range')
@@ -89,20 +96,40 @@ class GridStrategy(object):
 
     def create_order(self, price, order_type, amount=None, amount_fraction=None):
         try:
-            return self.trader.create_order(self.symbol, price, order_type, amount, amount_fraction)
+            order_id = self.trader.create_order(self.symbol, price, order_type, amount, amount_fraction)
+            if order_type == OrderType.BUY_MARKET:
+                order = self.trader.get_order(order_id)
+                self.base_asset -= float(order.filled_cash_amount)
+                self.target_asset += float(order.filled_amount) - float(order.filled_fees)
+            elif order_type == OrderType.SELL_MARKET:
+                order = self.trader.get_order(order_id)
+                self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
+                self.target_asset -= float(order.filled_amount)
+            return order_id
         except Exception as e:
             raise RuntimeError(f'Unable to create order: {e.args[0]}')
 
     def create_buy_order(self, grid):
         assert self.orders[grid] is None
-        # balance = self.trader.get_balance(self.base_symbol) TODO
-        amount = self.initial_total_asset_in_base / self.num_grids / self.newest_price
+        price = self.grids[grid]
+        if self.transaction_strategy == 'even':
+            amount = self.base_asset / (grid+1) / self.num_grids / price
+        elif self.transaction_strategy == 'half':
+            amount = self.base_asset / 2 / price
+        else:
+            raise NotImplementedError()
         self.orders[grid] = self.create_order(self.grids[grid], OrderType.BUY_LIMIT, amount)
 
     def create_sell_order(self, grid):
         assert self.orders[grid] is None
-        amount = self.initial_total_asset_in_target / self.num_grids
-        self.orders[grid] = self.create_order(self.grids[grid], OrderType.SELL_LIMIT, amount)
+        price = self.grids[grid]
+        if self.transaction_strategy == 'even':
+            amount = self.target_asset / (self.num_grids-grid+1) / self.num_grids
+        elif self.transaction_strategy == 'half':
+            amount = self.target_asset / 2
+        else:
+            raise NotImplementedError()
+        self.orders[grid] = self.create_order(price, OrderType.SELL_LIMIT, amount)
 
     def confirm_order_finished(self, grid):
         order = self.trader.get_order(self.orders[grid])
@@ -131,7 +158,8 @@ class GridStrategy(object):
         elif curr_grid < self.prev_grid:
             if self.prev_move != GridStrategy.UP:
                 self.confirm_order_finished(self.prev_grid - 1)
-                self.create_buy_order(curr_grid - 1)
+                if curr_grid - 1 >= 0:
+                    self.create_buy_order(curr_grid - 1)
                 if curr_grid + 1 <= self.num_grids and self.orders[curr_grid + 1] is None:
                     self.create_sell_order(curr_grid + 1)
             self.prev_move = GridStrategy.DOWN
