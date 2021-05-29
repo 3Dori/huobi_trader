@@ -8,6 +8,9 @@ from strategy.grid_strategy import GridStrategy
 from utils.market_simulator import brownian_motion
 
 
+root_dir = '/Users/clyx/Documents/quant/order_queue'
+
+
 class GridStrategyTester(unittest.TestCase):
     def test_grid_strategy(self):
         def feed_price_and_assert(price, prev_grid, prev_move, active_grids):
@@ -28,7 +31,8 @@ class GridStrategyTester(unittest.TestCase):
         usdt = 1000
         eth = 0.4
         trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
-        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, prices[0])
+        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, enable_logger=False)
+        strategy.start(prices[0])
         feed_price_and_assert(None, 6, GridStrategy.STAY, [5, 6])         # initial
         feed_price_and_assert(prices[1], 6, GridStrategy.STAY, [5, 6])    # 2501 -> 2510
         feed_price_and_assert(prices[2], 7, GridStrategy.UP, [5, 7])      # 2510 -> 2610
@@ -43,7 +47,8 @@ class GridStrategyTester(unittest.TestCase):
         usdt = 1000
         eth = 0.4
         trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
-        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, prices[0])
+        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, enable_logger=False)
+        strategy.start(prices[0])
         for price in prices[1:]:
             trader.feed({'ethusdt': price})
             strategy.feed(price)
@@ -59,8 +64,9 @@ def basic_backtest_grid_strategy(seed=None):
     eth = 0.2
     original_asset = usdt + eth * init_price
     trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
-    strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2500, 3000, 14, prices[0],
-                            transaction_strategy='half')
+    strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2500, 3000, 19,
+                            transaction_strategy='even', geom_ratio=4, enable_logger=False)
+    strategy.start(prices[0])
     for i, price in enumerate(prices[1:]):
         try:
             trader.feed({'ethusdt': price})
@@ -73,20 +79,23 @@ def basic_backtest_grid_strategy(seed=None):
     return prices[-1], hold_asset, strategy_asset
 
 
-def backtest_grid_strategy(sims=50):
-    # prices, hold_assets, strategy_assets = [], [], []
-    # for sim in range(sims):
-    #     try:
-    #         price, hold_asset, strategy_asset = basic_backtest_grid_strategy(seed=sim)
-    #         prices.append(price)
-    #         hold_assets.append(hold_asset)
-    #         strategy_assets.append(strategy_asset)
-    #     except:
-    #         print(sim)
-    # plt.plot(prices, hold_assets)
-    # plt.scatter(prices, strategy_assets)
-    # plt.show()
-    basic_backtest_grid_strategy(0)
+def backtest_grid_strategy(sims=200):
+    prices, hold_assets, strategy_assets = [], [], []
+    for sim in range(sims):
+        try:
+            price, hold_asset, strategy_asset = basic_backtest_grid_strategy(seed=sim)
+            if price <= 2780 or price >= 2820:
+                continue
+            prices.append(price)
+            hold_assets.append(hold_asset)
+            strategy_assets.append(strategy_asset)
+        except:
+            print(sim)
+    plt.plot(prices, hold_assets)
+    plt.scatter(prices, strategy_assets)
+    plt.show()
+    print(np.mean(strategy_assets))
+    # basic_backtest_grid_strategy(109)
 
 
 if __name__ == '__main__':

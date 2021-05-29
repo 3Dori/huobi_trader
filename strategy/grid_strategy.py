@@ -6,6 +6,7 @@ from huobi.constant import *
 
 from constants import *
 from trader import BaseTrader
+from logger import Logger
 
 
 class GridStrategy(object):
@@ -13,8 +14,11 @@ class GridStrategy(object):
     UP = 1
     DOWN = -1
 
-    def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price, num_grids,
-                 newest_price, grid_type='arithmetic', transaction_strategy='even'):
+    def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price,
+                 num_grids, grid_type='arithmetic', transaction_strategy='even', geom_ratio=2,
+                 enable_logger=True, root_dir=None):
+        self.logger = Logger(root_dir, 'Grid strategy') if enable_logger else None
+        self.enable_logger = enable_logger
         self.trader = trader
         self.symbol = symbol
         target_balance, base_balance = self.trader.get_balance_pair(symbol)
@@ -22,9 +26,13 @@ class GridStrategy(object):
             raise RuntimeError(f'Insufficient balance for {self.target_symbol}')
         if base_balance < target_asset:
             raise RuntimeError(f'Insufficient balance for {self.base_symbol}')
+        self.initial_target_asset = target_asset
+        self.initial_base_asset = base_asset
         self.target_asset = target_asset
         self.base_asset = base_asset
-        self.newest_price = newest_price
+        self.newest_price = 0
+        self.lower_price = lower_price
+        self.upper_price = upper_price
 
         if lower_price >= upper_price:
             raise ValueError('lower_price must be higher than upper_price')
@@ -42,17 +50,13 @@ class GridStrategy(object):
             raise ValueError(f'Profit is too small: {minimum_profit}')
         self.orders = [None] * len(self.grids)
 
-        if transaction_strategy not in ('even', 'half'):
+        if transaction_strategy not in ('even', 'geom'):    # Warning: geom is a bad strategy
             raise ValueError(f'Unknown transaction_strategy: {transaction_strategy}')
         self.transaction_strategy = transaction_strategy
+        self.geom_ratio = geom_ratio
 
-        if upper_price <= self.newest_price or lower_price >= self.newest_price:
-            raise RuntimeError('Unable to start a transaction because the current price is beyond the range')
-        curr_grid = self.get_newest_grid()
-        self.initial_total_asset_in_base, self.initial_total_asset_in_target = self.get_total_asset()
-        self.create_initial_order(curr_grid)
-        self.prev_grid = curr_grid
-        self.prev_move = GridStrategy.STAY    # Record the moving trend of the price
+        self.prev_grid = -1
+        self.prev_move = GridStrategy.STAY
 
     @property
     def base_symbol(self):
@@ -71,21 +75,28 @@ class GridStrategy(object):
             return total_asset_in_base, total_asset_in_target
 
     def create_initial_order(self, curr_grid):
-        assumed_asset = self.initial_total_asset_in_base * curr_grid / (self.num_grids + 1)
+        initial_total_asset_in_base = self.get_total_asset()[0]
+        assumed_asset = initial_total_asset_in_base * curr_grid / (self.num_grids + 1)
         if assumed_asset > self.base_asset:
             diff = assumed_asset - self.base_asset
             amount = diff / self.newest_price
             try:
                 self.create_order(None, OrderType.SELL_MARKET, amount)
-            except RuntimeError:
-                warnings.warn('Unable to create initial order')
+            except RuntimeError as e:
+                if self.enable_logger:
+                    self.logger.warning(f'Unable to create initial order: {e.args[0]}')
+                else:
+                    warnings.warn(f'Unable to create initial order: {e.args[0]}')
         elif assumed_asset < self.base_asset:
             diff = self.base_asset - assumed_asset
             amount = diff / self.newest_price
             try:
                 self.create_order(None, OrderType.BUY_MARKET, amount)
-            except RuntimeError:
-                warnings.warn('Unable to create initial order')
+            except RuntimeError as e:
+                if self.enable_logger:
+                    self.logger.warning('Unable to create initial order')
+                else:
+                    warnings.warn(f'Unable to create initial order: {e.args[0]}')
         if curr_grid - 1 >= 0:
             self.create_buy_order(curr_grid - 1)    # create initial buy limit order
         if curr_grid <= self.num_grids:
@@ -105,17 +116,25 @@ class GridStrategy(object):
                 order = self.trader.get_order(order_id)
                 self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
                 self.target_asset -= float(order.filled_amount)
+            if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
+                price = self.newest_price
+            if self.enable_logger:
+                self.logger.info(f'Created order. Order type: {order_type}; price: {price}; amount: {amount}')
             return order_id
         except Exception as e:
-            raise RuntimeError(f'Unable to create order: {e.args[0]}')
+            if self.enable_logger:
+                self.logger.error(f'Unable to create order. Order type: {order_type}; price: {self.newest_price}; '
+                                  f'amount: {amount}; error: {e.args[0]}')
+            else:
+                raise e
 
     def create_buy_order(self, grid):
         assert self.orders[grid] is None
         price = self.grids[grid]
         if self.transaction_strategy == 'even':
-            amount = self.base_asset / (grid+1) / self.num_grids / price
-        elif self.transaction_strategy == 'half':
-            amount = self.base_asset / 2 / price
+            amount = self.base_asset / (grid+1) / price
+        elif self.transaction_strategy == 'geom':
+            amount = self.base_asset / self.geom_ratio / price
         else:
             raise NotImplementedError()
         self.orders[grid] = self.create_order(self.grids[grid], OrderType.BUY_LIMIT, amount)
@@ -124,9 +143,9 @@ class GridStrategy(object):
         assert self.orders[grid] is None
         price = self.grids[grid]
         if self.transaction_strategy == 'even':
-            amount = self.target_asset / (self.num_grids-grid+1) / self.num_grids
-        elif self.transaction_strategy == 'half':
-            amount = self.target_asset / 2
+            amount = self.target_asset / (self.num_grids-grid+1)
+        elif self.transaction_strategy == 'geom':
+            amount = self.target_asset / self.geom_ratio
         else:
             raise NotImplementedError()
         self.orders[grid] = self.create_order(price, OrderType.SELL_LIMIT, amount)
@@ -134,7 +153,12 @@ class GridStrategy(object):
     def confirm_order_finished(self, grid):
         order = self.trader.get_order(self.orders[grid])
         if order.state != OrderState.FILLED:
-            raise RuntimeError('Unexpected unfinished order')
+            if self.enable_logger:
+                self.logger.error('Unfinished order detected')
+            else:
+                raise RuntimeError('Unfinished order detected')
+        elif self.enable_logger:
+            self.logger.info(f'Finished order confirmed. Order type: {order.type}; price: {order.price}; amount: {order.filled_amount}')
         if order.type == OrderType.BUY_LIMIT:
             self.target_asset += float(order.filled_amount) - float(order.filled_fees)
             self.base_asset -= float(order.filled_cash_amount)
@@ -163,6 +187,15 @@ class GridStrategy(object):
                 if curr_grid + 1 <= self.num_grids and self.orders[curr_grid + 1] is None:
                     self.create_sell_order(curr_grid + 1)
             self.prev_move = GridStrategy.DOWN
+        self.prev_grid = curr_grid
+
+    def start(self, price):
+        self.newest_price = price
+        if self.upper_price <= self.newest_price or self.lower_price >= self.newest_price:
+            raise RuntimeError('Unable to start a transaction because the current price is beyond the range')
+
+        curr_grid = self.get_newest_grid()
+        self.create_initial_order(curr_grid)
         self.prev_grid = curr_grid
 
     def run(self):

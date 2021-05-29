@@ -55,6 +55,11 @@ class BacktestTrader(BaseTrader):
     def get_order(self, order_id):
         return self.orders[order_id]
 
+    @staticmethod
+    def correct_amount(amount, symbol):
+        scale = transaction_pairs[symbol].amount_scale
+        return amount - 10 ** -scale
+
     def create_order(self, symbol, price, order_type, amount=None, amount_fraction=None):
         pair = transaction_pairs[symbol]
         if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
@@ -63,12 +68,14 @@ class BacktestTrader(BaseTrader):
             balance = self.get_balance(pair.base)
             if amount is None and amount_fraction is not None:
                 amount = balance / price * amount_fraction
+            amount = self.correct_amount(amount, symbol)
             if amount * price > balance:
                 raise RuntimeError(f'Insufficient balance to buy: buying {amount * price}, remaining: {balance}')
         elif order_type in (OrderType.SELL_MARKET, OrderType.SELL_LIMIT):
             balance = self.get_balance(pair.target)
             if amount is None and amount_fraction is not None:
                 amount = balance * amount_fraction
+            amount = self.correct_amount(amount, symbol)
             if amount > balance:
                 raise RuntimeError(f'Insufficient balance to sell: selling {amount}, remaining {balance}')
         if type(price) not in (float, int, np.float_):
