@@ -1,4 +1,5 @@
 import warnings
+from datetime import datetime
 
 import numpy as np
 
@@ -21,15 +22,17 @@ class GridStrategy(object):
         self.enable_logger = enable_logger
         self.trader = trader
         self.symbol = symbol
+        self.start_time = datetime.now()
         target_balance, base_balance = self.trader.get_balance_pair(symbol)
         if target_balance < target_asset:
             raise RuntimeError(f'Insufficient balance for {self.target_symbol}')
         if base_balance < target_asset:
             raise RuntimeError(f'Insufficient balance for {self.base_symbol}')
-        self.initial_target_asset = target_asset
-        self.initial_base_asset = base_asset
         self.target_asset = target_asset
         self.base_asset = base_asset
+        self.initial_target_asset = target_asset
+        self.initial_base_asset = base_asset
+        self.initial_total_asset_in_base = self.get_total_asset(in_base=True)
         self.newest_price = 0
         self.lower_price = lower_price
         self.upper_price = upper_price
@@ -65,6 +68,21 @@ class GridStrategy(object):
     @property
     def target_symbol(self):
         return transaction_pairs[self.symbol].target
+
+    def print_strategy_info(self):
+        current_asset = self.get_total_asset(in_base=True)
+        print(f'============ Grid strategy =============\n'
+              f'Started at {self.start_time.strftime("%Y/%m/%d")}\n'
+              f'Start assets:\n'
+              f'  {self.base_symbol}: {self.initial_base_asset}'
+              f'  {self.target_symbol}: {self.initial_target_asset}'
+              f'Current assets:\n'
+              f'  {self.base_symbol}: {self.base_asset}\n'
+              f'  {self.target_symbol}: {self.target_asset}\n'
+              f'  In base currency: {current_asset}'
+              f'Profit:\n'
+              f'  {(1 - current_asset / self.initial_total_asset_in_base) / 100}%'
+              f'=========================================')
 
     def get_total_asset(self, in_base=False):
         total_asset_in_base = self.base_asset + self.target_asset * self.newest_price
@@ -190,6 +208,9 @@ class GridStrategy(object):
         self.prev_grid = curr_grid
 
     def start(self, price):
+        self.start_time = datetime.now()
+        if self.enable_logger:
+            self.logger.info('Grid strategy started')
         self.newest_price = price
         if self.upper_price <= self.newest_price or self.lower_price >= self.newest_price:
             raise RuntimeError('Unable to start a transaction because the current price is beyond the range')
