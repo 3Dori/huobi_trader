@@ -1,5 +1,5 @@
 from constants import *
-from base_trader import BaseTrader
+from .base_trader import BaseTrader
 
 from huobi.constant import *
 from huobi.utils import *
