@@ -26,6 +26,8 @@ class Trader(BaseTrader):
         self.total_fee = 0
         self.stop_loss_threads = []
         self.long_order_threads = []
+        self.latest_timestamp = 0
+        self.client_id_counter = 0
 
     def get_balance(self, symbol='usdt'):
         balances = self.account_client.get_balance(self.account_id)
@@ -142,6 +144,14 @@ class Trader(BaseTrader):
             results.append(result)
         return results
 
+    def update_timestamp(self):
+        now = int(time.time())
+        if now == self.latest_timestamp:
+            self.client_id_counter += 1
+        else:
+            self.latest_timestamp = now
+            self.client_id_counter = 0
+
     def get_order(self, order_id):
         return self.trade_client.get_order(order_id)
 
@@ -155,7 +165,8 @@ class Trader(BaseTrader):
         amount = f'{float(amount):.{pair.amount_scale}f}'
         if price is not None:
             price = f'{float(price):.{pair.price_scale}f}'
-        client_order_id = f'{int(time.time())}{symbol}{00}'
+        self.update_timestamp()
+        client_order_id = f'{self.latest_timestamp}{symbol}{self.client_id_counter:02d}'
         order_id = self.trade_client.create_order(
             symbol=symbol, account_id=self.account_id, order_type=order_type, price=price,
             amount=amount, source=OrderSource.API, client_order_id=client_order_id)

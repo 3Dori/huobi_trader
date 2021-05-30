@@ -127,7 +127,6 @@ class GridStrategy(BaseStrategy):
                     warnings.warn(f'Unable to create initial order: {e.args}')
         elif assumed_asset < self.base_asset:
             amount = self.base_asset - assumed_asset
-            # amount = diff / self.newest_price
             try:
                 self.create_order(None, OrderType.BUY_MARKET, amount)
             except RuntimeError as e:
@@ -161,7 +160,7 @@ class GridStrategy(BaseStrategy):
             return order_id
         except Exception as e:
             if self.enable_logger:
-                self.logger.error(f'Unable to create order. Order type: {order_type}; price: {self.newest_price}; '
+                self.logger.error(f'Unable to create order. Order type: {order_type}; price: {price}; '
                                   f'amount: {amount}; error: {e.args}')
             else:
                 raise e
