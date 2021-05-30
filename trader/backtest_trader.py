@@ -96,8 +96,12 @@ class BacktestTrader(BaseTrader):
 
     def cancel_orders(self, symbol, order_ids):
         for order_id in order_ids:
-            order = self.unfinished_orders.get(order_id, None)
-            if order is not None and order.symbol == symbol:
+            order = self.orders.get(order_id, None)
+            if order is None:
+                raise RuntimeError(f'Order does not exist: {order_id}')
+            if order_id not in self.unfinished_orders:
+                raise RuntimeError(f'Order already finished or canceled: {order_id}')
+            if order.symbol == symbol:
                 assert order.state not in (OrderState.FILLED, OrderState.CANCELED)
                 del self.unfinished_orders[order_id]
                 order = self.orders.get(order_id, None)

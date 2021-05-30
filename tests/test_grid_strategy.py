@@ -13,12 +13,10 @@ root_dir = '/Users/clyx/Documents/quant/order_queue'
 
 class GridStrategyTester(unittest.TestCase):
     def test_grid_strategy(self):
-        def feed_price_and_assert(price, prev_grid, prev_move, active_grids):
-            if price is not None:
-                trader.feed({'ethusdt': price})
-                strategy.feed(price)
+        def feed_price_and_assert(price, prev_grid, active_grids):
+            trader.feed({'ethusdt': price})
+            strategy.feed(price)
             self.assertEqual(strategy.prev_grid, prev_grid)
-            self.assertEqual(strategy.prev_move, prev_move)
             for grid, order in enumerate(strategy.orders):
                 if grid in active_grids:
                     self.assertIsNotNone(order)
@@ -33,14 +31,13 @@ class GridStrategyTester(unittest.TestCase):
         trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
         strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, enable_logger=False)
         strategy.start(prices[0])
-        feed_price_and_assert(None, 6, GridStrategy.STAY, [5, 6])         # initial
-        feed_price_and_assert(prices[1], 6, GridStrategy.STAY, [5, 6])    # 2501 -> 2510
-        feed_price_and_assert(prices[2], 7, GridStrategy.UP, [5, 7])      # 2510 -> 2610
-        feed_price_and_assert(prices[3], 8, GridStrategy.UP, [6, 8])      # 2610 -> 2710
-        feed_price_and_assert(prices[4], 7, GridStrategy.DOWN, [6, 8])    # 2710 -> 2610
-        feed_price_and_assert(prices[5], 8, GridStrategy.UP, [6, 8])      # 2610 -> 2710
-        feed_price_and_assert(prices[6], 7, GridStrategy.DOWN, [6, 8])    # 2710 -> 2610
-        feed_price_and_assert(prices[7], 6, GridStrategy.DOWN, [5, 7])    # 2610 -> 2510
+        feed_price_and_assert(prices[1], 6, [5, 6])    # 2501 -> 2510
+        feed_price_and_assert(prices[2], 7, [5, 7])      # 2510 -> 2610
+        feed_price_and_assert(prices[3], 8, [6, 8])      # 2610 -> 2710
+        feed_price_and_assert(prices[4], 7, [6, 8])    # 2710 -> 2610
+        feed_price_and_assert(prices[5], 8, [6, 8])      # 2610 -> 2710
+        feed_price_and_assert(prices[6], 7, [6, 8])    # 2710 -> 2610
+        feed_price_and_assert(prices[7], 6, [5, 7])    # 2610 -> 2510
 
     def test_grid_strategy_overflow(self):
         prices = [2501, 2610, 2710, 2810, 2910, 3010, 3110]

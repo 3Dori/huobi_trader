@@ -25,3 +25,10 @@ class BacktestTraderTest(unittest.TestCase):
         trader.feed({symbol: 1800})
         order = trader.get_order(order_id)
         self.assertTrue(order.state == OrderState.FILLED)
+
+    def test_cancel(self):
+        symbol = 'ethusdt'
+        trader = BacktestTrader({'usdt': 100, 'eth': 0.1}, {symbol: 2000})
+        order_id = trader.create_order(symbol, 1900, OrderType.BUY_LIMIT, 0.01)
+        trader.feed({symbol: 1800})
+        self.assertRaises(RuntimeError, trader.cancel_orders, symbol, [order_id])

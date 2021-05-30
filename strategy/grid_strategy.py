@@ -8,16 +8,14 @@ from huobi.constant import *
 from constants import *
 from trader import BaseTrader
 from logger import Logger
+from .base_strategy import BaseStrategy
 
 
-class GridStrategy(object):
-    STAY = 0
-    UP = 1
-    DOWN = -1
-
-    def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price,
-                 num_grids, grid_type='arithmetic', transaction_strategy='even', geom_ratio=2,
+class GridStrategy(BaseStrategy):
+    def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price, num_grids,
+                 grid_type='arithmetic', transaction_strategy='even', geom_ratio=2,
                  enable_logger=True, root_dir=None):
+        super().__init__()
         self.logger = Logger(root_dir, 'Grid strategy') if enable_logger else None
         self.enable_logger = enable_logger
         self.trader = trader
@@ -32,7 +30,7 @@ class GridStrategy(object):
         self.base_asset = base_asset
         self.initial_target_asset = target_asset
         self.initial_base_asset = base_asset
-        self.initial_total_asset_in_base = self.get_total_asset(in_base=True)
+        self.initial_total_asset_in_base = 0
         self.newest_price = 0
         self.lower_price = lower_price
         self.upper_price = upper_price
@@ -52,6 +50,8 @@ class GridStrategy(object):
         if minimum_profit <= BaseTrader.FEE * 2:
             raise ValueError(f'Profit is too small: {minimum_profit}')
         self.orders = [None] * len(self.grids)
+        self.curr_buy_order_id = None
+        self.curr_sell_order_id = None
 
         if transaction_strategy not in ('even', 'geom'):    # Warning: geom is a bad strategy
             raise ValueError(f'Unknown transaction_strategy: {transaction_strategy}')
@@ -59,7 +59,6 @@ class GridStrategy(object):
         self.geom_ratio = geom_ratio
 
         self.prev_grid = -1
-        self.prev_move = GridStrategy.STAY
 
     @property
     def base_symbol(self):
@@ -155,7 +154,9 @@ class GridStrategy(object):
             amount = self.base_asset / self.geom_ratio / price
         else:
             raise NotImplementedError()
-        self.orders[grid] = self.create_order(self.grids[grid], OrderType.BUY_LIMIT, amount)
+        order_id = self.create_order(self.grids[grid], OrderType.BUY_LIMIT, amount)
+        self.orders[grid] = order_id
+        self.curr_buy_order_id = order_id
 
     def create_sell_order(self, grid):
         assert self.orders[grid] is None
@@ -166,48 +167,53 @@ class GridStrategy(object):
             amount = self.target_asset / self.geom_ratio
         else:
             raise NotImplementedError()
-        self.orders[grid] = self.create_order(price, OrderType.SELL_LIMIT, amount)
+        order_id = self.create_order(price, OrderType.SELL_LIMIT, amount)
+        self.orders[grid] = order_id
+        self.curr_sell_order_id = order_id
 
-    def confirm_order_finished(self, grid):
-        order = self.trader.get_order(self.orders[grid])
+    def confirm_order_finished(self, order_id, order):
         if order.state != OrderState.FILLED:
             if self.enable_logger:
                 self.logger.error('Unfinished order detected')
             else:
                 raise RuntimeError('Unfinished order detected')
-        elif self.enable_logger:
-            self.logger.info(f'Finished order confirmed. Order type: {order.type}; price: {order.price}; amount: {order.filled_amount}')
+        if self.enable_logger:
+            self.logger.info(f'Finished order confirmed. Order type: {order.type}; '
+                             f'price: {order.price}; amount: {order.filled_amount}')
         if order.type == OrderType.BUY_LIMIT:
             self.target_asset += float(order.filled_amount) - float(order.filled_fees)
             self.base_asset -= float(order.filled_cash_amount)
         elif order.type == OrderType.SELL_LIMIT:
             self.target_asset -= float(order.filled_amount)
             self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
-        self.trader.cancel_orders(self.symbol, [order for order in self.orders if order is not None])
+        self.trader.cancel_orders(self.symbol,
+                                  [order for order in self.orders if order is not None and order != order_id])
         self.orders = [None] * len(self.grids)
+        self.curr_sell_order_id = None
+        self.curr_buy_order_id = None
 
     def feed(self, price):
         self.newest_price = price
         curr_grid = self.get_newest_grid()
-        if curr_grid > self.prev_grid:
-            if self.prev_move != GridStrategy.DOWN:
-                self.confirm_order_finished(self.prev_grid)
-                if curr_grid <= self.num_grids:
-                    self.create_sell_order(curr_grid)
-                if curr_grid - 2 >= 0 and self.orders[curr_grid - 2] is None:
-                    self.create_buy_order(curr_grid - 2)
-            self.prev_move = GridStrategy.UP
-        elif curr_grid < self.prev_grid:
-            if self.prev_move != GridStrategy.UP:
-                self.confirm_order_finished(self.prev_grid - 1)
-                if curr_grid - 1 >= 0:
-                    self.create_buy_order(curr_grid - 1)
-                if curr_grid + 1 <= self.num_grids and self.orders[curr_grid + 1] is None:
-                    self.create_sell_order(curr_grid + 1)
-            self.prev_move = GridStrategy.DOWN
+        curr_sell_order = self.trader.get_order(self.curr_sell_order_id)
+        curr_buy_order = self.trader.get_order(self.curr_buy_order_id)
+        if curr_sell_order.state == OrderState.FILLED:
+            self.confirm_order_finished(self.curr_sell_order_id, curr_sell_order)
+            if curr_grid <= self.num_grids:
+                self.create_sell_order(curr_grid)
+            if curr_grid - 2 >= 0 and self.orders[curr_grid - 2] is None:
+                self.create_buy_order(curr_grid - 2)
+        elif curr_buy_order.state == OrderState.FILLED:
+            self.confirm_order_finished(self.curr_buy_order_id, curr_buy_order)
+            if curr_grid - 1 >= 0:
+                self.create_buy_order(curr_grid - 1)
+            if curr_grid + 1 <= self.num_grids and self.orders[curr_grid + 1] is None:
+                self.create_sell_order(curr_grid + 1)
         self.prev_grid = curr_grid
 
     def start(self, price):
+        self.newest_price = price
+        self.initial_total_asset_in_base = self.get_total_asset(in_base=True)
         self.start_time = datetime.now()
         if self.enable_logger:
             self.logger.info('Grid strategy started')
