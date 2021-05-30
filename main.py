@@ -1,6 +1,7 @@
 from constants import *
 from trader.trader import Trader
 
+from huobi.constant import *
 
 def main():
     # trader = Trader(API_KEY, SECRET_KEY, ACCOUNT_ID)

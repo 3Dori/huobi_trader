@@ -39,7 +39,7 @@ class GridStrategyTester(unittest.TestCase):
         feed_price_and_assert(prices[6], 7, [6, 8])    # 2710 -> 2610
         feed_price_and_assert(prices[7], 6, [5, 7])    # 2610 -> 2510
 
-    def test_grid_strategy_overflow(self):
+    def test_grid_strategy_overflow_1(self):
         prices = [2501, 2610, 2710, 2810, 2910, 3010, 3110]
         usdt = 1000
         eth = 0.4
@@ -49,7 +49,23 @@ class GridStrategyTester(unittest.TestCase):
         for price in prices[1:]:
             trader.feed({'ethusdt': price})
             strategy.feed(price)
-        self.assertAlmostEqual(trader.balance['eth'], 0.0)
+        self.assertAlmostEqual(trader.balance['eth'], 0.0, places=3)
+
+    def test_grid_strategy_overflow_2(self):
+        def feed_price_and_assert_balance(price, symbol, balance):
+            trader.feed({'ethusdt': price})
+            strategy.feed(price)
+            self.assertAlmostEqual(trader.balance[symbol], balance, places=2)
+        prices = [2501, 2610, 2710, 2601, 2499]
+        usdt = 1000
+        eth = 0.4
+        trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
+        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2400, 2600, 2, enable_logger=False)
+        strategy.start(prices[0])
+        feed_price_and_assert_balance(prices[1], 'eth', 0.0)
+        feed_price_and_assert_balance(prices[2], 'eth', 0.0)
+        feed_price_and_assert_balance(prices[3], 'eth', 0.0)
+        feed_price_and_assert_balance(prices[4], 'eth', 0.4)
 
 
 def basic_backtest_grid_strategy(seed=None):
@@ -58,7 +74,7 @@ def basic_backtest_grid_strategy(seed=None):
     init_price = 2800
     prices = brownian_motion(init_price, 10000, 0.1, sigma=5)
     usdt = 1000
-    eth = 0.2
+    eth = 0
     original_asset = usdt + eth * init_price
     trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
     strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2500, 3000, 19,

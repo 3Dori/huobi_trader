@@ -37,11 +37,11 @@ class Trader(BaseTrader):
         pair = transaction_pairs[symbol]
         target, base = pair.target, pair.base
         balances = self.account_client.get_balance(self.account_id)
-        target_balance, base_balance = 0, 0
+        target_balance, base_balance = None, None
         for balance in balances:
-            if balance.currency == target:
+            if balance.currency == target and target_balance is None:
                 target_balance = float(balance.balance)
-            elif balance.currency == base:
+            elif balance.currency == base and base_balance is None:
                 base_balance = float(balance.balance)
         return target_balance, base_balance
 
@@ -60,7 +60,7 @@ class Trader(BaseTrader):
                 'symbol': symbol,
                 'order_type': order_type,
                 'source': OrderSource.API,
-                'amount': f'{amount:.{amount_scale}f}',
+                'amount': f'{self.correct_amount(amount, symbol):.{amount_scale}f}',
                 'price': f'{price:.{price_scale}f}',
                 'client_order_id': order_id
             }
@@ -192,10 +192,12 @@ class Trader(BaseTrader):
         return results, orders
 
     def cancel_orders(self, symbol, order_ids):
+        cancel_results = []
         for i in range(0, len(order_ids), MAX_CANCEL_ORDER_NUM):
             cancel_result = self.trade_client.cancel_orders(symbol, order_ids[i:i+MAX_CANCEL_ORDER_NUM])
             LogInfo.output(cancel_result)
-        return cancel_result
+            cancel_results.append(cancel_result)
+        return cancel_results
 
     def cancel_all_orders_with_type(self, symbol, type):
         account_spot = self.account_client.get_account_by_type_and_symbol(AccountType.SPOT, symbol=None)

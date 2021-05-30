@@ -1,9 +1,13 @@
 import abc
 
+from logger import Logger
+
 
 class BaseStrategy(object):
-    def __init__(self):
-        pass
+    def __init__(self, enable_logger=True, root_dir=None):
+        self.logger = Logger(root_dir, 'Grid strategy') if enable_logger else None
+        self.enable_logger = enable_logger
+        self._stopped = False
 
     @abc.abstractmethod
     def feed(self, price):
@@ -19,4 +23,4 @@ class BaseStrategy(object):
 
     @abc.abstractmethod
     def stop(self):
-        pass
+        self._stopped = True

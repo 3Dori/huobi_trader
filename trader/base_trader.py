@@ -1,5 +1,7 @@
 import abc
 
+from constants import *
+
 
 class BaseTrader(object):
     FEE = 0.002
@@ -31,3 +33,7 @@ class BaseTrader(object):
     def cancel_orders(self, symbol, order_ids):
         pass
 
+    @staticmethod
+    def correct_amount(amount, symbol):
+        scale = transaction_pairs[symbol].amount_scale
+        return amount - 10 ** -scale

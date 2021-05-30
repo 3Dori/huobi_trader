@@ -55,11 +55,6 @@ class BacktestTrader(BaseTrader):
     def get_order(self, order_id):
         return self.orders[order_id]
 
-    @staticmethod
-    def correct_amount(amount, symbol):
-        scale = transaction_pairs[symbol].amount_scale
-        return amount - 10 ** -scale
-
     def create_order(self, symbol, price, order_type, amount=None, amount_fraction=None):
         pair = transaction_pairs[symbol]
         if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
