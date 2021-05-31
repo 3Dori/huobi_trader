@@ -14,8 +14,8 @@ from .base_strategy import BaseStrategy
 
 class GridStrategy(BaseStrategy):
     def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price, num_grids,
-                 grid_type='arithmetic', transaction_strategy='even', geom_ratio=2,
-                 take_profit=None, stop_loss=None,
+                 grid_type='arithmetic', transaction_strategy='even', geom_ratio=2, start_with_market_order=True,
+                 take_profit=None, stop_loss=None, min_price_to_start=None, max_price_to_start=None,
                  enable_logger=True, root_dir=None, interval=10):
         self.start_time = datetime.now()
         super().__init__(enable_logger=enable_logger, root_dir=root_dir,
@@ -62,13 +62,23 @@ class GridStrategy(BaseStrategy):
             raise ValueError(f'Unknown transaction_strategy: {transaction_strategy}')
         self.transaction_strategy = transaction_strategy
         self.geom_ratio = geom_ratio
+        self.start_with_market_order = start_with_market_order
 
         if take_profit is not None and take_profit <= upper_price:
             raise ValueError('take_profit must be greater than upper_price')
         if stop_loss is not None and stop_loss >= lower_price:
             raise ValueError('stop_loss must be less than lower_price')
+        if min_price_to_start is not None and min_price_to_start <= lower_price:
+            raise ValueError('min_price_to_start must be greater than lower_price')
+        if max_price_to_start is not None and max_price_to_start >= upper_price:
+            raise ValueError('max_price_to_start must be less than upper_price')
+        if min_price_to_start is not None and max_price_to_start is not None:
+            if min_price_to_start >= max_price_to_start:
+                raise ValueError('min_price_to_start must be less than max_price_to_start')
         self.take_profit = take_profit
         self.stop_loss = stop_loss
+        self.min_price_to_start = min_price_to_start
+        self.max_price_to_start = max_price_to_start
 
         if interval is not None and interval < 0:
             raise ValueError('interval must be greater than 0')
@@ -132,7 +142,7 @@ class GridStrategy(BaseStrategy):
         else:
             return total_asset_in_base, total_asset_in_target
 
-    def create_initial_order(self, curr_grid):
+    def create_initial_market_order(self, curr_grid):
         initial_total_asset_in_base = self.get_total_asset()[0]
         assumed_asset = initial_total_asset_in_base * curr_grid / (self.num_grids + 1)
         if assumed_asset > self.base_asset:
@@ -154,10 +164,6 @@ class GridStrategy(BaseStrategy):
                     self.logger.warning('Unable to create initial order')
                 else:
                     warnings.warn(f'Unable to create initial order: {e.args}')
-        if curr_grid - 1 >= 0:
-            self.create_buy_order(curr_grid - 1)    # create initial buy limit order
-        if curr_grid <= self.num_grids:
-            self.create_sell_order(curr_grid)    # create initial sell limit order
 
     def get_newest_grid(self):
         return np.searchsorted(self.grids, self.newest_price)
@@ -264,15 +270,15 @@ class GridStrategy(BaseStrategy):
                 self.create_buy_order(curr_grid - 1)
             if curr_grid + 1 <= self.num_grids and self.orders[curr_grid + 1] is None:
                 self.create_sell_order(curr_grid + 1)
-        if curr_grid >= self.num_grids:
+        if curr_grid >= self.num_grids > self.prev_grid:
             if self.enable_logger:
                 self.logger.warning('The newest price has exceeded upper bound of the grid.')
-        elif curr_grid <= 0:
+        elif curr_grid <= 0 < self.prev_grid:
             if self.enable_logger:
                 self.logger.warning('The newest price has exceeded lower bound of the grid.')
         self.prev_grid = curr_grid
 
-    def start(self, price=None):
+    def pre_start(self, price=None):
         if price is None:
             price = self.trader.get_newest_price(self.symbol)
         self.newest_price = price
@@ -285,16 +291,36 @@ class GridStrategy(BaseStrategy):
         if self.enable_logger:
             self.logger.info('Grid strategy started')
         curr_grid = self.get_newest_grid()
-        self.create_initial_order(curr_grid)
+        if self.start_with_market_order:
+            self.create_initial_market_order(curr_grid)
+        if curr_grid - 1 >= 0:
+            self.create_buy_order(curr_grid - 1)    # create initial buy limit order
+        if curr_grid <= self.num_grids:
+            self.create_sell_order(curr_grid)    # create initial sell limit order
         self.prev_grid = curr_grid
 
+    def start(self, price=None):
         if self.interval is not None:
             self.thread = threading.Thread(target=self.run, args=())
             self.thread.start()
+        else:
+            self.pre_start(price)
         self._started = True
 
     def run(self):
-        assert self.interval is not None
+        if self.min_price_to_start is not None or self.max_price_to_start is not None:
+            while True:
+                if self._stopped:
+                    if self.enable_logger:
+                        self.logger.info('Strategy successfully stopped')
+                    return
+                newest_price = self.trader.get_newest_price(self.symbol)
+                min_price_satisfied = self.min_price_to_start is None or newest_price >= self.min_price_to_start
+                max_price_satisfied = self.max_price_to_start is None or newest_price <= self.max_price_to_start
+                if min_price_satisfied and max_price_satisfied:
+                    break
+                time.sleep(self.interval)
+        self.pre_start()
         while True:
             if self._stopped:
                 if self.enable_logger:
