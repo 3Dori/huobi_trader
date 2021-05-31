@@ -5,7 +5,7 @@ import os
 
 class Logger(object):
     def __init__(self, root_dir, topic, level=logging.INFO, when='D',
-                 fmt='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s'):
+                 fmt='%(asctime)s - %(levelname)s: %(message)s'):
         self.logger = logging.getLogger(topic)
         format_str = logging.Formatter(fmt)
         self.logger.setLevel(level)

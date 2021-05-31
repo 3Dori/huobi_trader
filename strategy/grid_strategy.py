@@ -19,7 +19,7 @@ class GridStrategy(BaseStrategy):
                  enable_logger=True, root_dir=None, interval=10):
         self.start_time = datetime.now()
         super().__init__(enable_logger=enable_logger, root_dir=root_dir,
-                         topic=f'Grid_strategy_{self.start_time.strftime("%Y%m%d-%H%M%S")}')
+                         topic=f'Grid_strategy_{self.start_time.strftime("%Y%m%d_%H%M%S")}')
         self.trader = trader
         self.symbol = symbol
         self.pair = transaction_pairs[self.symbol]
@@ -96,7 +96,7 @@ class GridStrategy(BaseStrategy):
                 grids.append(f'[{grid:.{self.pair.price_scale}f}]')
         grids = ', '.join(grids)
         print(f'============ Grid strategy =============\n'
-              f'Started at {self.start_time.strftime("%Y/%m/%d %H%:M:%S")}\n'
+              f'Started at {self.start_time.strftime("%Y/%m/%d %H%:%M:%S")}\n'
               f'Start assets:\n'
               f'  {self.base_symbol}: {self.initial_base_asset:.{self.pair.price_scale}f}\n'
               f'  {self.target_symbol}: {self.initial_target_asset:.{self.pair.amount_scale}f}\n'
@@ -235,9 +235,9 @@ class GridStrategy(BaseStrategy):
             self.stop(sell_at_market_price=True)
             return
         self.newest_price = price
-        curr_grid = self.get_newest_grid()
         curr_sell_order = self.curr_sell_order_id and self.trader.get_order(self.curr_sell_order_id)
         curr_buy_order = self.curr_buy_order_id and self.trader.get_order(self.curr_buy_order_id)
+        curr_grid = self.get_newest_grid()
         if curr_sell_order is not None and curr_sell_order.state == OrderState.FILLED:
             self.confirm_order_finished(self.curr_sell_order_id, curr_sell_order)
             if curr_grid <= self.num_grids:
