@@ -83,13 +83,13 @@ class Trader(BaseTrader):
         return amounts / np.sum(amounts)
 
     @staticmethod
-    def get_normalized_amounts_with_distr(num_oders, distr):
+    def get_normalized_amounts_with_distr(num_orders, distr):
         if distr is None:
-            return Trader.get_normalized_amounts_with_eagerness(num_oders, 1.0)
+            return Trader.get_normalized_amounts_with_eagerness(num_orders, 1.0)
         elif distr['distr'] == 'geometry':
-            return Trader.get_normalized_amounts_with_eagerness(num_oders, distr.get('eagerness', 1.0))
+            return Trader.get_normalized_amounts_with_eagerness(num_orders, distr.get('eagerness', 1.0))
         elif distr['distr'] == 'normal':
-            return Trader.get_normalized_amounts_with_normal_distr(num_oders, distr.get('skewness', 1.0))
+            return Trader.get_normalized_amounts_with_normal_distr(num_orders, distr.get('skewness', 1.0))
 
     @staticmethod
     def get_price_interval(lower_price, upper_price, num_orders, order_type):
@@ -108,7 +108,8 @@ class Trader(BaseTrader):
             results += create_results
         return results
 
-    def generate_buy_queue_orders(self, symbol, lower_price, upper_price, num_orders, total_amount=None, total_amount_fraction=None, distr=None):
+    def generate_buy_queue_orders(self, symbol, lower_price, upper_price, num_orders,
+                                  total_amount=None, total_amount_fraction=None, distr=None):
         prices = self.get_price_interval(lower_price, upper_price, num_orders, OrderType.BUY_LIMIT)
         normalized_amounts = self.get_normalized_amounts_with_distr(num_orders, distr)
         if total_amount is not None:
@@ -116,11 +117,15 @@ class Trader(BaseTrader):
         elif total_amount_fraction is not None:
             balance = self.get_balance(transaction_pairs[symbol].base) * total_amount_fraction
             amounts = normalized_amounts * (balance / prices * normalized_amounts).sum()
+        else:
+            raise ValueError('One of total_amount or total_amount_fraction should be given')
         orders = self.generate_orders(symbol, prices, amounts, OrderType.BUY_LIMIT)
         return orders
 
-    def create_smart_buy_queue(self, symbol, lower_price, upper_price, num_orders, profit=1.05, total_amount=None, total_amount_fraction=None, distr=None):
-        orders = self.generate_buy_queue_orders(symbol, lower_price, upper_price, num_orders, total_amount, total_amount_fraction, distr)
+    def create_smart_buy_queue(self, symbol, lower_price, upper_price, num_orders, profit=1.05,
+                               total_amount=None, total_amount_fraction=None, distr=None):
+        orders = self.generate_buy_queue_orders(symbol, lower_price, upper_price, num_orders, total_amount,
+                                                total_amount_fraction, distr)
         results = self.submit_orders(orders)
         LogInfo.output_list(results)
         client_order_id_header = str(int(time.time()))
@@ -130,9 +135,10 @@ class Trader(BaseTrader):
             client_order_id = f'{client_order_id_header}{symbol}{i:02d}'
             order_price = float(order['price']) * profit
             stop_price = order_price * 0.999
-            order_id = self.algo_client.create_order(
+            self.algo_client.create_order(
                 account_id=self.account_id, symbol=symbol, order_side=OrderSide.SELL, order_type=AlgoOrderType.LIMIT,
-                order_size=order['amount'], order_price=f'{order_price:.{price_scale}f}', stop_price=f'{stop_price:.{price_scale}f}',
+                order_size=order['amount'], order_price=f'{order_price:.{price_scale}f}',
+                stop_price=f'{stop_price:.{price_scale}f}',
                 client_order_id=client_order_id)
             algo_order_ids.append(client_order_id)
         return results, orders, algo_order_ids
@@ -161,7 +167,7 @@ class Trader(BaseTrader):
             if order_type is OrderType.SELL_LIMIT or order_type is OrderType.SELL_MARKET:
                 amount = self.get_balance(pair.target) * amount_fraction
             else:
-                amount = self.get_balance(pair.base) * amount_fraction    # TODO: fix
+                amount = self.get_balance(pair.base) * amount_fraction
         amount = f'{float(amount):.{pair.amount_scale}f}'
         if price is not None:
             price = f'{float(price):.{pair.price_scale}f}'
@@ -173,18 +179,21 @@ class Trader(BaseTrader):
         return order_id
         # return self.get_order(order_id)
 
-    def create_buy_queue(self, symbol, lower_price, upper_price, num_orders, total_amount=None, total_amount_fraction=None, distr=None):
+    def create_buy_queue(self, symbol, lower_price, upper_price, num_orders,
+                         total_amount=None, total_amount_fraction=None, distr=None):
         newest_price = self.get_newest_price(symbol)
         if lower_price > newest_price:
             raise ValueError('Unable to buy at a price higher the the market price')
         if lower_price >= upper_price:
             raise ValueError('lower_price should be less than upper_price')
-        orders = self.generate_buy_queue_orders(symbol, lower_price, upper_price, num_orders, total_amount, total_amount_fraction, distr)
+        orders = self.generate_buy_queue_orders(symbol, lower_price, upper_price, num_orders,
+                                                total_amount, total_amount_fraction, distr)
         results = self.submit_orders(orders)
         LogInfo.output_list(results)
         return results, orders
 
-    def create_sell_queue(self, symbol, lower_price, upper_price, num_orders, total_amount=None, total_amount_fraction=None, distr=None):
+    def create_sell_queue(self, symbol, lower_price, upper_price, num_orders,
+                          total_amount=None, total_amount_fraction=None, distr=None):
         newest_price = self.get_newest_price(symbol)
         if upper_price < newest_price:
             raise ValueError('Unable to sell at a price lower the the market price')
@@ -197,6 +206,8 @@ class Trader(BaseTrader):
         elif total_amount_fraction is not None:
             balance = self.get_balance(transaction_pairs[symbol].target) * total_amount_fraction
             amounts = normalized_amounts * balance
+        else:
+            raise ValueError('One of total_amount or total_amount_fraction should be given')
         orders = self.generate_orders(symbol, prices, amounts, OrderType.SELL_LIMIT)
         results = self.submit_orders(orders)
         LogInfo.output_list(results)
@@ -209,10 +220,10 @@ class Trader(BaseTrader):
             cancel_results.append(cancel_result)
         return cancel_results
 
-    def cancel_all_orders_with_type(self, symbol, type):
+    def cancel_all_orders_with_type(self, symbol, order_type):
         account_spot = self.account_client.get_account_by_type_and_symbol(AccountType.SPOT, symbol=None)
         orders = self.trade_client.get_open_orders(symbol=symbol, account_id=account_spot.id, direct=QueryDirection.NEXT)
-        sell_order_ids = [str(order.id) for order in orders if order.type == type]
+        sell_order_ids = [str(order.id) for order in orders if order.type == order_type]
         if len(sell_order_ids) == 0:
             return
         return self.cancel_orders(symbol, sell_order_ids)
@@ -231,7 +242,8 @@ class Trader(BaseTrader):
         thread = StopLoss(symbol, self, stop_loss_price, interval, trailing_order)
         self.stop_loss_threads.append(thread)
 
-    def start_long_order_thread(self, symbol, buy_price, profit, amount=None, amount_fraction=None, stop_loss=0.9, interval=10):
+    def start_long_order_thread(self, symbol, buy_price, profit, amount=None, amount_fraction=None,
+                                stop_loss=0.9, interval=10):
         from long_order import LongOrder
         thread = LongOrder(symbol, self, buy_price, profit, amount, amount_fraction, stop_loss, interval)
         self.long_order_threads.append(thread)
