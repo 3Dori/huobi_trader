@@ -206,7 +206,6 @@ class Trader(BaseTrader):
         cancel_results = []
         for i in range(0, len(order_ids), MAX_CANCEL_ORDER_NUM):
             cancel_result = self.trade_client.cancel_orders(symbol, order_ids[i:i+MAX_CANCEL_ORDER_NUM])
-            LogInfo.output(cancel_result)
             cancel_results.append(cancel_result)
         return cancel_results
 

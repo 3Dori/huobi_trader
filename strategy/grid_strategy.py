@@ -17,10 +17,12 @@ class GridStrategy(BaseStrategy):
                  grid_type='arithmetic', transaction_strategy='even', geom_ratio=2,
                  stop_loss=None,
                  enable_logger=True, root_dir=None, interval=10):
-        super().__init__(enable_logger=enable_logger, root_dir=root_dir)
+        self.start_time = datetime.now()
+        super().__init__(enable_logger=enable_logger, root_dir=root_dir,
+                         topic=f'Grid_strategy_{self.start_time.strftime("%Y%m%d-%H%M%S")}')
         self.trader = trader
         self.symbol = symbol
-        self.start_time = datetime.now()
+        self.pair = transaction_pairs[self.symbol]
         target_balance, base_balance = self.trader.get_balance_pair(symbol)
         if target_balance < target_asset:
             raise RuntimeError(f'Insufficient balance for {self.target_symbol}')
@@ -34,6 +36,7 @@ class GridStrategy(BaseStrategy):
         self.newest_price = 0
         self.lower_price = lower_price
         self.upper_price = upper_price
+        self.num_finished_orders = 0
 
         if lower_price >= upper_price:
             raise ValueError('lower_price must be higher than upper_price')
@@ -71,33 +74,43 @@ class GridStrategy(BaseStrategy):
 
     @property
     def base_symbol(self):
-        return transaction_pairs[self.symbol].base
+        return self.pair.base
 
     @property
     def target_symbol(self):
-        return transaction_pairs[self.symbol].target
+        return self.pair.target
 
     def print_strategy_info(self):
-        current_asset = self.get_total_asset(in_base=True)
-        pair = transaction_pairs[self.symbol]
+        current_asset = self.get_total_asset(in_base=True) if self._started else 1.0
+        initial_total_asset_in_base = self.initial_total_asset_in_base if self._started else 1.0
         if self.grid_type == 'arithmetic':
-            profit_per_grid = f'{self.grids[-1]/self.grids[-2]*100:.2f}% - {self.grids[1]/self.grids[0]*100:.2f}%'
+            profit_per_grid = f'{(self.grids[-1]/self.grids[-2] - 1 - BaseTrader.FEE)*100:.2f}% - ' \
+                              f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE)*100:.2f}%'
         else:
-            profit_per_grid = f'{self.grids[1]/self.grids[0]*100:.2f}%'
+            profit_per_grid = f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE)*100:.2f}%'
+        grids = []
+        for i, grid in enumerate(self.grids):
+            if i != self.prev_grid:
+                grids.append(f'{grid:.{self.pair.price_scale}f}')
+            else:
+                grids.append(f'[{grid:.{self.pair.price_scale}f}]')
+        grids = ', '.join(grids)
         print(f'============ Grid strategy =============\n'
-              f'Started at {self.start_time.strftime("%Y/%m/%d")}\n'
+              f'Started at {self.start_time.strftime("%Y/%m/%d %H%:M:%S")}\n'
               f'Start assets:\n'
-              f'  {self.base_symbol}: {self.initial_base_asset:.{pair.price_scale}f}\n'
-              f'  {self.target_symbol}: {self.initial_target_asset:.{pair.amount_scale}f}\n'
-              f'  In base currency: {self.initial_total_asset_in_base:.{pair.price_scale}f}\n'
+              f'  {self.base_symbol}: {self.initial_base_asset:.{self.pair.price_scale}f}\n'
+              f'  {self.target_symbol}: {self.initial_target_asset:.{self.pair.amount_scale}f}\n'
+              f'  In base currency: {initial_total_asset_in_base:.{self.pair.price_scale}f}\n'
               f'Current assets:\n'
-              f'  {self.base_symbol}: {self.base_asset:.{pair.price_scale}f}\n'
-              f'  {self.target_symbol}: {self.target_asset:.{pair.amount_scale}f}\n'
-              f'  In base currency: {current_asset:.{pair.price_scale}f}\n'
-              f'Profit per grid:\n'
-              f'  {profit_per_grid}\n'
+              f'  {self.base_symbol}: {self.base_asset:.{self.pair.price_scale}f}\n'
+              f'  {self.target_symbol}: {self.target_asset:.{self.pair.amount_scale}f}\n'
+              f'  In base currency: {current_asset:.{self.pair.price_scale}f}\n'
+              f'Grids: {grids}\n'
+              f'Profit per grid: {profit_per_grid}\n'
+              f'Finished orders: {self.num_finished_orders}\n'
               f'Profit:\n'
-              f'  {(current_asset/self.initial_total_asset_in_base - 1) * 100:.2f}%\n'
+              f'  {current_asset - initial_total_asset_in_base:.{self.pair.price_scale}} {self.base_symbol}\n'
+              f'  {(current_asset/initial_total_asset_in_base - 1)*100:.2f}%\n'
               f'=========================================')
 
     def get_profit_in_percentage(self):
@@ -156,12 +169,15 @@ class GridStrategy(BaseStrategy):
             if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
                 price = self.newest_price
             if self.enable_logger:
-                self.logger.info(f'Created order. Order type: {order_type}; price: {price}; amount: {amount}')
+                self.logger.info(f'Created order. Type: {order_type}; '
+                                 f'price: {price:.{self.pair.price_scale}f}; '
+                                 f'amount: {amount:.{self.pair.amount_scale}f}')
             return order_id
         except Exception as e:
             if self.enable_logger:
-                self.logger.error(f'Unable to create order. Order type: {order_type}; price: {price}; '
-                                  f'amount: {amount}; error: {e.args}')
+                self.logger.error(f'Unable to create order. Type: {order_type}; '
+                                  f'price: {price:.{self.pair.price_scale}f}; '
+                                  f'amount: {amount:.{self.pair.amount_scale}f}; error: {e.args}')
             else:
                 raise e
 
@@ -198,8 +214,10 @@ class GridStrategy(BaseStrategy):
             else:
                 raise RuntimeError('Unfinished order detected')
         if self.enable_logger:
-            self.logger.info(f'Finished order confirmed. Order type: {order.type}; '
-                             f'price: {order.price}; amount: {order.filled_amount}')
+            self.logger.info(f'Finished order confirmed. Type: {order.type}; '
+                             f'price: {float(order.price):.{self.pair.price_scale}f}; '
+                             f'amount: {float(order.filled_amount):.{self.pair.amount_scale}f}')
+        self.num_finished_orders += 1
         if order.type == OrderType.BUY_LIMIT:
             self.target_asset += float(order.filled_amount) - float(order.filled_fees)
             self.base_asset -= float(order.filled_cash_amount)
@@ -232,6 +250,12 @@ class GridStrategy(BaseStrategy):
                 self.create_buy_order(curr_grid - 1)
             if curr_grid + 1 <= self.num_grids and self.orders[curr_grid + 1] is None:
                 self.create_sell_order(curr_grid + 1)
+        if curr_grid >= self.num_grids:
+            if self.enable_logger:
+                self.logger.warning('The newest price has exceeded upper bound of the grid.')
+        elif curr_grid <= 0:
+            if self.enable_logger:
+                self.logger.warning('The newest price has exceeded lower bound of the grid.')
         self.prev_grid = curr_grid
 
     def start(self, price=None):
@@ -252,6 +276,7 @@ class GridStrategy(BaseStrategy):
         if self.interval is not None:
             self.thread = threading.Thread(target=self.run, args=())
             self.thread.start()
+        self._started = True
 
     def run(self):
         assert self.interval is not None
@@ -272,4 +297,7 @@ class GridStrategy(BaseStrategy):
         if sell_at_market_price:
             self.create_order(None, OrderType.SELL_MARKET, self.target_asset)
         self.logger.info('Stopping grid strategy')
+        order_list = [order_id for order_id in (self.curr_sell_order_id, self.curr_buy_order_id) if order_id]
+        if order_list:
+            self.trader.cancel_orders(self.symbol, order_list)
         super().stop()

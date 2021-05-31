@@ -11,7 +11,7 @@ class Logger(object):
         self.logger.setLevel(level)
         sh = logging.StreamHandler()
         sh.setFormatter(format_str)
-        fh = logging.FileHandler(filename=os.path.join(root_dir, 'logs', f'{time.strftime("%Y%m%d%H%M%S")}.log'))
+        fh = logging.FileHandler(filename=os.path.join(root_dir, 'logs', f'{topic}.log'))
         fh.setFormatter(format_str)
         self.logger.addHandler(sh)
         self.logger.addHandler(fh)
