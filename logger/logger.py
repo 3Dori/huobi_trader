@@ -1,10 +1,9 @@
 import logging
-import time
 import os
 
 
 class Logger(object):
-    def __init__(self, root_dir, topic, level=logging.INFO, when='D',
+    def __init__(self, root_dir, topic, level=logging.INFO,
                  fmt='%(asctime)s - %(levelname)s: %(message)s'):
         self.logger = logging.getLogger(topic)
         format_str = logging.Formatter(fmt)
