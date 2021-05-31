@@ -94,10 +94,10 @@ class GridStrategy(BaseStrategy):
             profit_per_grid = f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE*2)*100:.2f}%'
         grids = []
         for i, grid in enumerate(self.grids):
-            if i != self.prev_grid:
-                grids.append(f'{grid:.{self.pair.price_scale}f}')
-            else:
+            if i == self.prev_grid - 1:
                 grids.append(f'[{grid:.{self.pair.price_scale}f}]')
+            else:
+                grids.append(f'{grid:.{self.pair.price_scale}f}')
         grids = ', '.join(grids)
         print(f'============ Grid strategy =============\n'
               f'Started at {self.start_time.strftime("%Y/%m/%d %H%:%M:%S")}\n'
@@ -217,11 +217,11 @@ class GridStrategy(BaseStrategy):
     def confirm_order_finished(self, order_id, order):
         if order.state != OrderState.FILLED:
             if self.enable_logger:
-                self.logger.error('Unfinished order detected')
+                self.logger.error('Unfilled order detected')
             else:
-                raise RuntimeError('Unfinished order detected')
+                raise RuntimeError('Unfilled order detected')
         if self.enable_logger:
-            self.logger.info(f'Finished order confirmed. Type: {order.type}; '
+            self.logger.info(f'Filled order confirmed. Type: {order.type}; '
                              f'price: {float(order.price):.{self.pair.price_scale}f}; '
                              f'amount: {float(order.filled_amount):.{self.pair.amount_scale}f}')
         self.num_finished_orders += 1
@@ -282,12 +282,12 @@ class GridStrategy(BaseStrategy):
         if self.upper_price <= self.newest_price or self.lower_price >= self.newest_price:
             raise RuntimeError('Unable to start a transaction because the current price is beyond the range')
 
+        if self.enable_logger:
+            self.logger.info('Grid strategy started')
         curr_grid = self.get_newest_grid()
         self.create_initial_order(curr_grid)
         self.prev_grid = curr_grid
 
-        if self.enable_logger:
-            self.logger.info('Grid strategy started')
         if self.interval is not None:
             self.thread = threading.Thread(target=self.run, args=())
             self.thread.start()
