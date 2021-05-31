@@ -15,7 +15,7 @@ from .base_strategy import BaseStrategy
 class GridStrategy(BaseStrategy):
     def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price, num_grids,
                  grid_type='arithmetic', transaction_strategy='even', geom_ratio=2,
-                 stop_loss=None,
+                 take_profit=None, stop_loss=None,
                  enable_logger=True, root_dir=None, interval=10):
         self.start_time = datetime.now()
         super().__init__(enable_logger=enable_logger, root_dir=root_dir,
@@ -33,6 +33,7 @@ class GridStrategy(BaseStrategy):
         self.initial_target_asset = target_asset
         self.initial_base_asset = base_asset
         self.initial_total_asset_in_base = 0
+        self.initial_price = 0
         self.newest_price = 0
         self.lower_price = lower_price
         self.upper_price = upper_price
@@ -62,8 +63,11 @@ class GridStrategy(BaseStrategy):
         self.transaction_strategy = transaction_strategy
         self.geom_ratio = geom_ratio
 
+        if take_profit is not None and take_profit <= upper_price:
+            raise ValueError('take_profit must be greater than upper_price')
         if stop_loss is not None and stop_loss >= lower_price:
             raise ValueError('stop_loss must be less than lower_price')
+        self.take_profit = take_profit
         self.stop_loss = stop_loss
 
         if interval is not None and interval < 0:
@@ -98,14 +102,17 @@ class GridStrategy(BaseStrategy):
         print(f'============ Grid strategy =============\n'
               f'Started at {self.start_time.strftime("%Y/%m/%d %H%:%M:%S")}\n'
               f'Start assets:\n'
+              f'  Price: {self.initial_price:.{self.pair.price_scale}f}\n'
               f'  {self.base_symbol}: {self.initial_base_asset:.{self.pair.price_scale}f}\n'
               f'  {self.target_symbol}: {self.initial_target_asset:.{self.pair.amount_scale}f}\n'
               f'  In base currency: {initial_total_asset_in_base:.{self.pair.price_scale}f}\n'
               f'Current assets:\n'
+              f'  Price: {self.newest_price:.{self.pair.price_scale}f}\n'
               f'  {self.base_symbol}: {self.base_asset:.{self.pair.price_scale}f}\n'
               f'  {self.target_symbol}: {self.target_asset:.{self.pair.amount_scale}f}\n'
               f'  In base currency: {current_asset:.{self.pair.price_scale}f}\n'
-              f'Grids: {grids}\n'
+              f'Grids:\n'
+              f'  {grids}\n'
               f'Profit per grid: {profit_per_grid}\n'
               f'Finished orders: {self.num_finished_orders}\n'
               f'Profit:\n'
@@ -231,6 +238,9 @@ class GridStrategy(BaseStrategy):
         self.curr_buy_order_id = None
 
     def feed(self, price):
+        if self.take_profit is not None and price > self.take_profit:
+            self.stop()
+            return
         if self.stop_loss is not None and price < self.stop_loss:
             self.stop(sell_at_market_price=True)
             return
@@ -267,6 +277,7 @@ class GridStrategy(BaseStrategy):
             price = self.trader.get_newest_price(self.symbol)
         self.newest_price = price
         self.initial_total_asset_in_base = self.get_total_asset(in_base=True)
+        self.initial_price = price
         self.start_time = datetime.now()
         if self.upper_price <= self.newest_price or self.lower_price >= self.newest_price:
             raise RuntimeError('Unable to start a transaction because the current price is beyond the range')
