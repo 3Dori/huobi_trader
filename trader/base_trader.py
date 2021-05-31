@@ -35,5 +35,6 @@ class BaseTrader(object):
 
     @staticmethod
     def correct_amount(amount, symbol):
+        # Reduce the amount by one smallest decimal precision to avoid insufficient balance caused by round-up errors
         scale = transaction_pairs[symbol].amount_scale
         return amount - 10 ** -scale

@@ -84,10 +84,10 @@ class GridStrategy(BaseStrategy):
         current_asset = self.get_total_asset(in_base=True) if self._started else 1.0
         initial_total_asset_in_base = self.initial_total_asset_in_base if self._started else 1.0
         if self.grid_type == 'arithmetic':
-            profit_per_grid = f'{(self.grids[-1]/self.grids[-2] - 1 - BaseTrader.FEE)*100:.2f}% - ' \
-                              f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE)*100:.2f}%'
+            profit_per_grid = f'{(self.grids[-1]/self.grids[-2] - 1 - BaseTrader.FEE*2)*100:.2f}% - ' \
+                              f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE*2)*100:.2f}%'
         else:
-            profit_per_grid = f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE)*100:.2f}%'
+            profit_per_grid = f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE*2)*100:.2f}%'
         grids = []
         for i, grid in enumerate(self.grids):
             if i != self.prev_grid:
@@ -240,12 +240,16 @@ class GridStrategy(BaseStrategy):
         curr_grid = self.get_newest_grid()
         if curr_sell_order is not None and curr_sell_order.state == OrderState.FILLED:
             self.confirm_order_finished(self.curr_sell_order_id, curr_sell_order)
+            if curr_grid == self.prev_grid:
+                curr_grid += 1    # handling latency between transaction and price-reading
             if curr_grid <= self.num_grids:
                 self.create_sell_order(curr_grid)
             if curr_grid - 2 >= 0 and self.orders[curr_grid - 2] is None:
                 self.create_buy_order(curr_grid - 2)
         elif curr_buy_order is not None and curr_buy_order.state == OrderState.FILLED:
             self.confirm_order_finished(self.curr_buy_order_id, curr_buy_order)
+            if curr_grid == self.prev_grid:
+                curr_grid -= 1    # handling latency between transaction and price-reading
             if curr_grid - 1 >= 0:
                 self.create_buy_order(curr_grid - 1)
             if curr_grid + 1 <= self.num_grids and self.orders[curr_grid + 1] is None:
