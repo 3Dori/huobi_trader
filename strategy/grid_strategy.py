@@ -300,6 +300,9 @@ class GridStrategy(BaseStrategy):
         self.prev_grid = curr_grid
 
     def start(self, price=None):
+        if self._started:
+            warnings.warn('Strategy already started')
+            return
         if self.interval is not None:
             self.thread = threading.Thread(target=self.run, args=())
             self.thread.start()
@@ -307,19 +310,23 @@ class GridStrategy(BaseStrategy):
             self.pre_start(price)
         self._started = True
 
+    def check_start_condition(self):
+        if self.min_price_to_start is None and self.max_price_to_start is None:
+            return
+        while True:
+            if self._stopped:
+                if self.enable_logger:
+                    self.logger.info('Strategy successfully stopped')
+                return
+            newest_price = self.trader.get_newest_price(self.symbol)
+            min_price_satisfied = self.min_price_to_start is None or newest_price >= self.min_price_to_start
+            max_price_satisfied = self.max_price_to_start is None or newest_price <= self.max_price_to_start
+            if min_price_satisfied and max_price_satisfied:
+                break
+            time.sleep(self.interval)
+
     def run(self):
-        if self.min_price_to_start is not None or self.max_price_to_start is not None:
-            while True:
-                if self._stopped:
-                    if self.enable_logger:
-                        self.logger.info('Strategy successfully stopped')
-                    return
-                newest_price = self.trader.get_newest_price(self.symbol)
-                min_price_satisfied = self.min_price_to_start is None or newest_price >= self.min_price_to_start
-                max_price_satisfied = self.max_price_to_start is None or newest_price <= self.max_price_to_start
-                if min_price_satisfied and max_price_satisfied:
-                    break
-                time.sleep(self.interval)
+        self.check_start_condition()
         self.pre_start()
         while True:
             if self._stopped:

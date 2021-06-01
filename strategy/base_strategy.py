@@ -24,4 +24,5 @@ class BaseStrategy(object):
 
     @abc.abstractmethod
     def stop(self):
-        self._stopped = True
+        if self._started:
+            self._stopped = True
