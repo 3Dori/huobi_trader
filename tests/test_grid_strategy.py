@@ -5,7 +5,7 @@ import numpy as np
 
 from trader import BacktestTrader
 from strategy.grid_strategy import GridStrategy
-from utils.market_simulator import brownian_motion
+from utils import brownian_motion
 
 
 root_dir = '/Users/clyx/Documents/quant/order_queue'

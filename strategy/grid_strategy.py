@@ -7,22 +7,16 @@ import numpy as np
 
 from huobi.constant import *
 
-from constants import *
 from trader import BaseTrader
-from .base_strategy import BaseStrategy
+from .single_pair_strategy import SinglePairStrategy
 
 
-class GridStrategy(BaseStrategy):
+class GridStrategy(SinglePairStrategy):
     def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price, num_grids,
                  grid_type='arithmetic', transaction_strategy='even', geom_ratio=2, start_with_market_order=True,
                  take_profit=None, stop_loss=None, min_price_to_start=None, max_price_to_start=None,
                  enable_logger=True, root_dir=None, interval=10):
-        self.start_time = datetime.now()
-        super().__init__(enable_logger=enable_logger, root_dir=root_dir,
-                         topic=f'Grid_strategy_{self.start_time.strftime("%Y%m%d_%H%M%S")}')
-        self.trader = trader
-        self.symbol = symbol
-        self.pair = transaction_pairs[self.symbol]
+        super(GridStrategy, self).__init__(trader, symbol, enable_logger=enable_logger, root_dir=root_dir)
         target_balance, base_balance = self.trader.get_balance_pair(symbol)
         if target_balance < target_asset:
             raise RuntimeError(f'Insufficient balance for {self.target_symbol}')
