@@ -76,11 +76,11 @@ class BacktestTrader(BaseTrader):
         if type(price) not in (float, int, np.float_):
             raise TypeError('price must be of float or int type')
         if order_type == OrderType.BUY_MARKET:
-            self.balance[pair.target] += amount * (1 - BaseTrader.FEE * 2)
+            self.balance[pair.target] += amount * (1 - self.FEE * 2)
             self.balance[pair.base] -= amount * price
         elif order_type == OrderType.SELL_MARKET:
             self.balance[pair.target] -= amount
-            self.balance[pair.base] += amount * price * (1 - BaseTrader.FEE * 2)
+            self.balance[pair.base] += amount * price * (1 - self.FEE * 2)
 
         order_id = str(uuid.uuid4())
         order = BackTestOrder(order_id, symbol, order_type, price, amount)
@@ -112,15 +112,15 @@ class BacktestTrader(BaseTrader):
                     assert order.type in (OrderType.BUY_LIMIT, OrderType.SELL_LIMIT)
                     if order.type == OrderType.BUY_LIMIT and price <= order.price:
                         filled_cash_amount = order.amount * price
-                        self.balance[pair.target] += order.amount * (1 - BaseTrader.FEE)
+                        self.balance[pair.target] += order.amount * (1 - self.FEE)
                         self.balance[pair.base] -= filled_cash_amount
                         finished_order_ids.append(order_id)
-                        self.orders[order_id].set_finished(order.amount, order.amount * BaseTrader.FEE, filled_cash_amount)
+                        self.orders[order_id].set_finished(order.amount, order.amount * self.FEE, filled_cash_amount)
                     elif order.type == OrderType.SELL_LIMIT and price >= order.price:
                         filled_cash_amount = order.amount * price
                         self.balance[pair.target] -= order.amount
-                        self.balance[pair.base] += filled_cash_amount * (1 - BaseTrader.FEE)
+                        self.balance[pair.base] += filled_cash_amount * (1 - self.FEE)
                         finished_order_ids.append(order_id)
-                        self.orders[order_id].set_finished(order.amount, filled_cash_amount * BaseTrader.FEE, filled_cash_amount)
+                        self.orders[order_id].set_finished(order.amount, filled_cash_amount * self.FEE, filled_cash_amount)
             for order_id in finished_order_ids:
                 del self.unfinished_orders[order_id]

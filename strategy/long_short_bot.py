@@ -1,6 +1,7 @@
 import time
 import threading
 
+import numpy as np
 
 from huobi.constant import *
 
@@ -14,7 +15,7 @@ from .single_pair_strategy import SinglePairStrategy
 class LongShortBot(SinglePairStrategy, RunnableStrategy):
     def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset,
                  window_size=20, window_type=CandlestickInterval.MIN1, num_orders=5,
-                 lower_profit=1.0, upper_profit=2.0,
+                 lower_profit=1.0, upper_profit=2.0, grid_type='geometric',
                  enable_logger=True, root_dir=None, interval=10):
         SinglePairStrategy.__init__(self, trader, symbol, target_asset, base_asset,
                                     enable_logger=enable_logger, root_dir=root_dir)
@@ -25,6 +26,16 @@ class LongShortBot(SinglePairStrategy, RunnableStrategy):
         self.aggr = StreamAggr(window_range, window_type='s', metrics=['bollinger'])
         self.window_start = self.window_end = 0
         self.num_orders = num_orders
+        if lower_profit >= upper_profit:
+            raise ValueError('lower_profit must be smaller than upper_profit')
+        if lower_profit <= trader.FEE * 2:
+            raise ValueError(f'Profit is too small: {lower_profit}')
+        if grid_type == 'arithmetic':
+            self.profit_grids = np.linspace(lower_profit, upper_profit, num_orders)
+        elif grid_type == 'geometric':
+            self.profit_grids = np.geomspace(lower_profit, upper_profit, num_orders)
+        else:
+            raise ValueError(f'Unknown grid_type: {grid_type}')
         self.buy_orders = [None] * num_orders
         self.sell_orders = [None] * num_orders
 
