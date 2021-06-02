@@ -22,7 +22,7 @@ class TestStreamAggr(unittest.TestCase):
         for sum, sum2, count in zip(sums, sum2s, counts):
             vars.append(sum2 / count - (sum / count) ** 2)
             stds.append(vars[-1] ** 0.5)
-        aggr = StreamAggr(window_size=5, window_type='ms')
+        aggr = StreamAggr(window_size=5, window_type='s')
         for time, value, sum, sum2, count, var, std in zip(times, values, sums, sum2s, counts, vars, stds):
             aggr.feed(time, value)
             assert_values(sum, sum2, count, var, std)
