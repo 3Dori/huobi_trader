@@ -17,12 +17,3 @@ class BaseStrategy(abc.ABC):
     @abc.abstractmethod
     def start(self, price):
         pass
-
-    @abc.abstractmethod
-    def run(self):
-        pass
-
-    @abc.abstractmethod
-    def stop(self):
-        if self._started:
-            self._stopped = True

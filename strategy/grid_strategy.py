@@ -8,27 +8,18 @@ import numpy as np
 from huobi.constant import *
 
 from trader import BaseTrader
+from .runnable_strategy import RunnableStrategy
 from .single_pair_strategy import SinglePairStrategy
 
 
-class GridStrategy(SinglePairStrategy):
+class GridStrategy(SinglePairStrategy, RunnableStrategy):
     def __init__(self, trader: BaseTrader, symbol, target_asset, base_asset, lower_price, upper_price, num_grids,
                  grid_type='arithmetic', transaction_strategy='even', geom_ratio=2, start_with_market_order=True,
                  take_profit=None, stop_loss=None, min_price_to_start=None, max_price_to_start=None,
                  enable_logger=True, root_dir=None, interval=10):
-        super(GridStrategy, self).__init__(trader, symbol, enable_logger=enable_logger, root_dir=root_dir)
-        target_balance, base_balance = self.trader.get_balance_pair(symbol)
-        if target_balance < target_asset:
-            raise RuntimeError(f'Insufficient balance for {self.target_symbol}')
-        if base_balance < base_asset:
-            raise RuntimeError(f'Insufficient balance for {self.base_symbol}')
-        self.target_asset = target_asset
-        self.base_asset = base_asset
-        self.initial_target_asset = target_asset
-        self.initial_base_asset = base_asset
-        self.initial_total_asset_in_base = 0
-        self.initial_price = 0
-        self.newest_price = 0
+        SinglePairStrategy.__init__(self, trader, symbol, target_asset, base_asset,
+                                    enable_logger=enable_logger, root_dir=root_dir)
+        RunnableStrategy.__init__(self, interval)
         self.lower_price = lower_price
         self.upper_price = upper_price
         self.num_finished_orders = 0
@@ -46,7 +37,7 @@ class GridStrategy(SinglePairStrategy):
         else:
             raise ValueError(f'Unknown grid_type: {grid_type}')
         minimum_profit = self.grids[-1] / self.grids[-2] - 1
-        if minimum_profit <= BaseTrader.FEE * 2:
+        if minimum_profit <= trader.FEE * 2:
             raise ValueError(f'Profit is too small: {minimum_profit}')
         self.orders = [None] * len(self.grids)
         self.curr_buy_order_id = None
@@ -74,28 +65,16 @@ class GridStrategy(SinglePairStrategy):
         self.min_price_to_start = min_price_to_start
         self.max_price_to_start = max_price_to_start
 
-        if interval is not None and interval < 0:
-            raise ValueError('interval must be greater than 0')
-        self.interval = interval
         self.prev_grid = -1
-        self.thread = None
-
-    @property
-    def base_symbol(self):
-        return self.pair.base
-
-    @property
-    def target_symbol(self):
-        return self.pair.target
 
     def print_strategy_info(self):
         current_asset = self.get_total_asset(in_base=True) if self._started else 1.0
         initial_total_asset_in_base = self.initial_total_asset_in_base if self._started else 1.0
         if self.grid_type == 'arithmetic':
-            profit_per_grid = f'{(self.grids[-1]/self.grids[-2] - 1 - BaseTrader.FEE*2)*100:.2f}% - ' \
-                              f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE*2)*100:.2f}%'
+            profit_per_grid = f'{(self.grids[-1]/self.grids[-2] - 1 - self.trader.FEE*2)*100:.2f}% - ' \
+                              f'{(self.grids[1]/self.grids[0] - 1 - self.trader.FEE*2)*100:.2f}%'
         else:
-            profit_per_grid = f'{(self.grids[1]/self.grids[0] - 1 - BaseTrader.FEE*2)*100:.2f}%'
+            profit_per_grid = f'{(self.grids[1]/self.grids[0] - 1 - self.trader.FEE*2)*100:.2f}%'
         grids = []
         for i, grid in enumerate(self.grids):
             if i == self.prev_grid - 1:
@@ -317,22 +296,6 @@ class GridStrategy(SinglePairStrategy):
             max_price_satisfied = self.max_price_to_start is None or newest_price <= self.max_price_to_start
             if min_price_satisfied and max_price_satisfied:
                 break
-            time.sleep(self.interval)
-
-    def run(self):
-        self.check_start_condition()
-        self.pre_start()
-        while True:
-            if self._stopped:
-                if self.enable_logger:
-                    self.logger.info('Strategy successfully stopped')
-                return
-            try:
-                newest_price = self.trader.get_newest_price(self.symbol)
-                self.feed(newest_price)
-            except RuntimeError:
-                if self.enable_logger:
-                    self.logger.error('Unable to read the newest price from the trader')
             time.sleep(self.interval)
 
     def stop(self, sell_at_market_price=False):
