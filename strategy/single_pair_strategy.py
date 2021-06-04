@@ -1,6 +1,8 @@
 import abc
 from datetime import datetime
 
+from huobi.constant import *
+
 from constants import *
 from strategy import BaseStrategy
 
@@ -26,6 +28,47 @@ class SinglePairStrategy(BaseStrategy, abc.ABC):
         self.initial_total_asset_in_base = 0
         self.initial_price = 0
         self.newest_price = 0
+
+    def get_total_asset(self, in_base=False):
+        total_asset_in_base = self.base_asset + self.target_asset * self.newest_price
+        total_asset_in_target = total_asset_in_base / self.newest_price
+        if in_base:
+            return total_asset_in_base
+        else:
+            return total_asset_in_base, total_asset_in_target
+
+    def cancel_orders(self, order_ids):
+        try:
+            self.trader.cancel_orders(self.symbol, order_ids)
+        except RuntimeError as e:
+            if self.enable_logger:
+                self.logger.error(f'Unable to cancel order: {e.args}')
+
+    def create_order(self, price, order_type, amount=None):
+        try:
+            order_id = self.trader.create_order(self.symbol, price, order_type, amount)
+            if order_type == OrderType.BUY_MARKET:
+                order = self.trader.get_order(order_id)
+                self.base_asset -= float(order.filled_cash_amount)
+                self.target_asset += float(order.filled_amount) - float(order.filled_fees)
+            elif order_type == OrderType.SELL_MARKET:
+                order = self.trader.get_order(order_id)
+                self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
+                self.target_asset -= float(order.filled_amount)
+            if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
+                price = self.newest_price
+            if self.enable_logger:
+                self.logger.info(f'Created order. Type: {order_type}; '
+                                 f'price: {price:.{self.pair.price_scale}f}; '
+                                 f'amount: {amount:.{self.pair.amount_scale}f}')
+            return order_id
+        except Exception as e:
+            if self.enable_logger:
+                self.logger.error(f'Unable to create order. Type: {order_type}; '
+                                  f'price: {price:.{self.pair.price_scale}f}; '
+                                  f'amount: {amount:.{self.pair.amount_scale}f}; error: {e.args}')
+            else:
+                raise e
 
     @property
     def base_symbol(self):

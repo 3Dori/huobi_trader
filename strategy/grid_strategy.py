@@ -107,65 +107,19 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
         current_asset = self.get_total_asset(in_base=True)
         return (current_asset/self.initial_total_asset_in_base - 1) * 100
 
-    def get_total_asset(self, in_base=False):
-        total_asset_in_base = self.base_asset + self.target_asset * self.newest_price
-        total_asset_in_target = total_asset_in_base / self.newest_price
-        if in_base:
-            return total_asset_in_base
-        else:
-            return total_asset_in_base, total_asset_in_target
-
     def create_initial_market_order(self, curr_grid):
         initial_total_asset_in_base = self.get_total_asset()[0]
         assumed_asset = initial_total_asset_in_base * curr_grid / (self.num_grids + 1)
         if assumed_asset > self.base_asset:
             diff = assumed_asset - self.base_asset
             amount = diff / self.newest_price
-            try:
-                self.create_order(None, OrderType.SELL_MARKET, amount)
-            except RuntimeError as e:
-                if self.enable_logger:
-                    self.logger.warning(f'Unable to create initial order: {e.args}')
-                else:
-                    warnings.warn(f'Unable to create initial order: {e.args}')
+            self.create_order(None, OrderType.SELL_MARKET, amount)
         elif assumed_asset < self.base_asset:
             amount = self.base_asset - assumed_asset
-            try:
-                self.create_order(None, OrderType.BUY_MARKET, amount)
-            except RuntimeError as e:
-                if self.enable_logger:
-                    self.logger.warning('Unable to create initial order')
-                else:
-                    warnings.warn(f'Unable to create initial order: {e.args}')
+            self.create_order(None, OrderType.BUY_MARKET, amount)
 
     def get_newest_grid(self):
         return np.searchsorted(self.grids, self.newest_price)
-
-    def create_order(self, price, order_type, amount=None):
-        try:
-            order_id = self.trader.create_order(self.symbol, price, order_type, amount)
-            if order_type == OrderType.BUY_MARKET:
-                order = self.trader.get_order(order_id)
-                self.base_asset -= float(order.filled_cash_amount)
-                self.target_asset += float(order.filled_amount) - float(order.filled_fees)
-            elif order_type == OrderType.SELL_MARKET:
-                order = self.trader.get_order(order_id)
-                self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
-                self.target_asset -= float(order.filled_amount)
-            if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
-                price = self.newest_price
-            if self.enable_logger:
-                self.logger.info(f'Created order. Type: {order_type}; '
-                                 f'price: {price:.{self.pair.price_scale}f}; '
-                                 f'amount: {amount:.{self.pair.amount_scale}f}')
-            return order_id
-        except Exception as e:
-            if self.enable_logger:
-                self.logger.error(f'Unable to create order. Type: {order_type}; '
-                                  f'price: {price:.{self.pair.price_scale}f}; '
-                                  f'amount: {amount:.{self.pair.amount_scale}f}; error: {e.args}')
-            else:
-                raise e
 
     def create_buy_order(self, grid):
         assert self.orders[grid] is None
@@ -210,8 +164,7 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
         elif order.type == OrderType.SELL_LIMIT:
             self.target_asset -= float(order.filled_amount)
             self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
-        self.trader.cancel_orders(self.symbol,
-                                  [order for order in self.orders if order is not None and order != order_id])
+        self.cancel_orders([order for order in self.orders if order is not None and order != order_id])
         self.orders = [None] * len(self.grids)
         self.curr_sell_order_id = None
         self.curr_buy_order_id = None
@@ -304,5 +257,5 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
         self.logger.info('Stopping grid strategy')
         order_list = [order_id for order_id in (self.curr_sell_order_id, self.curr_buy_order_id) if order_id]
         if order_list:
-            self.trader.cancel_orders(self.symbol, order_list)
+            self.cancel_orders(order_list)
         super().stop()

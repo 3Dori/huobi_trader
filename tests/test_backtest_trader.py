@@ -9,10 +9,13 @@ class BacktestTraderTest(unittest.TestCase):
         symbol = 'ethusdt'
         trader = BacktestTrader({'usdt': 100, 'eth': 0.1}, {symbol: 2000})
         self.assertRaises(RuntimeError, trader.create_order, symbol, 1999, OrderType.BUY_LIMIT, 0.5)
-        self.assertRaises(RuntimeError, trader.create_order, symbol, None, OrderType.BUY_MARKET, 0.5)
+        self.assertRaises(RuntimeError, trader.create_order, symbol, None, OrderType.BUY_MARKET, 2001)
         self.assertRaises(RuntimeError, trader.create_order, symbol, 2001, OrderType.SELL_LIMIT, 0.2)
-        self.assertRaises(RuntimeError, trader.create_order, symbol, None, OrderType.BUY_MARKET, 0.2)
+        self.assertRaises(RuntimeError, trader.create_order, symbol, None, OrderType.SELL_MARKET, 0.2)
         self.assertRaises(TypeError, trader.create_order, symbol, None, OrderType.BUY_LIMIT, 0.01)
+        trader.create_order(symbol, None, OrderType.BUY_MARKET, 90)
+        self.assertAlmostEqual(trader.get_balance('usdt'), 10, 3)
+        self.assertAlmostEqual(trader.get_balance('eth'), 90 / 2000 + 0.1, 3)
 
     def test_feed(self):
         symbol = 'ethusdt'

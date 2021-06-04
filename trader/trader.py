@@ -144,10 +144,7 @@ class Trader(BaseTrader):
         return results, orders, algo_order_ids
 
     def cancel_all_algo_orders(self, order_ids):
-        results = []
-        for order_id in order_ids:
-            result = self.algo_client.cancel_orders(order_id)
-            results.append(result)
+        results = [self.algo_client.cancel_orders(order_id) for order_id in order_ids]
         return results
 
     def update_timestamp(self):
@@ -177,7 +174,14 @@ class Trader(BaseTrader):
             symbol=symbol, account_id=self.account_id, order_type=order_type, price=price,
             amount=amount, source=OrderSource.API, client_order_id=client_order_id)
         return order_id
-        # return self.get_order(order_id)
+
+    @staticmethod
+    def get_time():
+        return int(time.time())
+
+    def get_previous_prices(self, symbol, window_type, window_size):
+        candlesticks = self.market_client.get_candlestick(symbol, window_type, window_size)
+        return [(cs.id, (cs.open + cs.close)/2) for cs in sorted(candlesticks, key=lambda cs: cs.id)]
 
     def create_buy_queue(self, symbol, lower_price, upper_price, num_orders,
                          total_amount=None, total_amount_fraction=None, distr=None):

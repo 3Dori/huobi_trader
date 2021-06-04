@@ -5,7 +5,7 @@ import numpy as np
 
 from trader import BacktestTrader
 from strategy.grid_strategy import GridStrategy
-from utils import brownian_motion
+import utils
 
 
 root_dir = '/Users/clyx/Documents/quant/order_queue'
@@ -29,7 +29,7 @@ class GridStrategyTester(unittest.TestCase):
         usdt = 1000
         eth = 0.4
         trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
-        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, enable_logger=False)
+        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, enable_logger=False, interval=None)
         strategy.start(prices[0])
         feed_price_and_assert(prices[1], 6, [5, 6])    # 2501 -> 2510
         feed_price_and_assert(prices[2], 7, [5, 7])      # 2510 -> 2610
@@ -44,7 +44,7 @@ class GridStrategyTester(unittest.TestCase):
         usdt = 1000
         eth = 0.4
         trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
-        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, enable_logger=False)
+        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2000, 3000, 11, enable_logger=False, interval=None)
         strategy.start(prices[0])
         for price in prices[1:]:
             trader.feed({'ethusdt': price})
@@ -60,7 +60,7 @@ class GridStrategyTester(unittest.TestCase):
         usdt = 1000
         eth = 0.4
         trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
-        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2400, 2600, 2, enable_logger=False)
+        strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2400, 2600, 2, enable_logger=False, interval=None)
         strategy.start(prices[0])
         feed_price_and_assert_balance(prices[1], 'eth', 0.0)
         feed_price_and_assert_balance(prices[2], 'eth', 0.0)
@@ -68,35 +68,31 @@ class GridStrategyTester(unittest.TestCase):
         feed_price_and_assert_balance(prices[4], 'eth', 0.4)
 
 
-def basic_backtest_grid_strategy(seed=None):
+def basic_monte_carlo_grid_strategy(seed=None):
     if seed is not None:
         np.random.seed(seed)
     init_price = 2800
-    prices = brownian_motion(init_price, 10000, 0.1, sigma=5)
+    prices = utils.brownian_motion(init_price, 10000, 0.1, sigma=5)
     usdt = 1000
     eth = 0
-    original_asset = usdt + eth * init_price
     trader = BacktestTrader({'usdt': usdt, 'eth': eth}, {'ethusdt': prices[0]})
     strategy = GridStrategy(trader, 'ethusdt', eth, usdt, 2500, 3000, 19,
-                            transaction_strategy='even', geom_ratio=4, enable_logger=False)
+                            transaction_strategy='even', geom_ratio=4, enable_logger=False, interval=None)
     strategy.start(prices[0])
+    original_asset = strategy.get_total_asset(in_base=True)
     for i, price in enumerate(prices[1:]):
-        try:
-            trader.feed({'ethusdt': price})
-            strategy.feed(price)
-        except:
-            print(i)
-            raise
+        trader.feed({'ethusdt': price})
+        strategy.feed(price)
     hold_asset = original_asset * prices[-1] / prices[0]
     strategy_asset = strategy.get_total_asset(in_base=True)
     return prices[-1], hold_asset, strategy_asset
 
 
-def backtest_grid_strategy(sims=200):
+def monte_carlo_grid_strategy(sims=200):
     prices, hold_assets, strategy_assets = [], [], []
     for sim in range(sims):
         try:
-            price, hold_asset, strategy_asset = basic_backtest_grid_strategy(seed=sim)
+            price, hold_asset, strategy_asset = basic_monte_carlo_grid_strategy(seed=sim)
             if price <= 2780 or price >= 2820:
                 continue
             prices.append(price)
@@ -108,9 +104,9 @@ def backtest_grid_strategy(sims=200):
     plt.scatter(prices, strategy_assets)
     plt.show()
     print(np.mean(strategy_assets))
-    # basic_backtest_grid_strategy(109)
 
 
 if __name__ == '__main__':
-    backtest_grid_strategy()
+    monte_carlo_grid_strategy()
+    # basic_monte_carlo_grid_strategy(109)
 
