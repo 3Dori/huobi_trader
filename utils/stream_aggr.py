@@ -7,7 +7,7 @@ class StreamAggr(object):
     GC_SIZE = 2 ** 20 - 1
     TIME_OFFSET = 0.1
 
-    def __init__(self, window_size, window_type='s', metrics=None):
+    def __init__(self, window_size, window_type='s', metrics=('bollinger',)):
         self.times = np.zeros(StreamAggr.TMP_MEM_SIZE, dtype=int)
         self.values = np.zeros(StreamAggr.TMP_MEM_SIZE, dtype=float)
         self.prev_start = self.prev_end = 0
@@ -18,8 +18,6 @@ class StreamAggr(object):
         self.window_type = window_type
         self.metrics = {}
         if metrics is not None:
-            if not isinstance(metrics, list):
-                raise TypeError('ta must be iterable')
             metrics = set(metrics)
             for metric in metrics:
                 if metric == 'bollinger':
