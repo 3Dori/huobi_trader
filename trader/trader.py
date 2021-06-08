@@ -15,7 +15,7 @@ import time
 
 
 class Trader(BaseTrader):
-    def __init__(self, api_key, secret_key, account_id):
+    def __init__(self, api_key, secret_key, account_id, verbose=False):
         super().__init__()
         self.account_id = account_id
         self.trade_client = TradeClient(api_key=api_key, secret_key=secret_key)
@@ -28,6 +28,7 @@ class Trader(BaseTrader):
         self.long_order_threads = []
         self.latest_timestamp = 0
         self.client_id_counter = 0
+        self.verbose = verbose
 
     def get_balance(self, symbol='usdt'):
         balances = self.account_client.get_balance(self.account_id)
@@ -51,7 +52,7 @@ class Trader(BaseTrader):
         newest_trade = self.market_client.get_market_trade(symbol=symbol)[0]
         return newest_trade.price
 
-    def generate_orders(self, symbol, prices, amounts, order_type):
+    def submit_orders(self, symbol, prices, amounts, order_type):
         client_order_id_header = str(int(time.time()))
         order_ids = [f'{client_order_id_header}{symbol}{i:02d}' for i in range(len(prices))]
         pair = transaction_pairs[symbol]
@@ -68,6 +69,11 @@ class Trader(BaseTrader):
             }
             for amount, price, order_id in zip(amounts, prices, order_ids)
         ]
+        results = []
+        for i in range(0, len(orders), MAX_ORDER_NUM):
+            create_results = self.trade_client.batch_create_order(order_config_list=orders[i:i+MAX_ORDER_NUM])
+            results += create_results
+        LogInfo.output_list(results)
         return orders
 
     @staticmethod
@@ -101,13 +107,6 @@ class Trader(BaseTrader):
             raise ValueError(f'Unknown order type {order_type}')
         return prices
 
-    def submit_orders(self, orders):
-        results = []
-        for i in range(0, len(orders), MAX_ORDER_NUM):
-            create_results = self.trade_client.batch_create_order(order_config_list=orders[i:i+MAX_ORDER_NUM])
-            results += create_results
-        return results
-
     def generate_buy_queue_orders(self, symbol, lower_price, upper_price, num_orders,
                                   total_amount=None, total_amount_fraction=None, distr=None):
         prices = self.get_price_interval(lower_price, upper_price, num_orders, OrderType.BUY_LIMIT)
@@ -119,15 +118,12 @@ class Trader(BaseTrader):
             amounts = normalized_amounts * (balance / prices * normalized_amounts).sum()
         else:
             raise ValueError('One of total_amount or total_amount_fraction should be given')
-        orders = self.generate_orders(symbol, prices, amounts, OrderType.BUY_LIMIT)
-        return orders
+        return self.submit_orders(symbol, prices, amounts, OrderType.BUY_LIMIT)
 
     def create_smart_buy_queue(self, symbol, lower_price, upper_price, num_orders, profit=1.05,
                                total_amount=None, total_amount_fraction=None, distr=None):
         orders = self.generate_buy_queue_orders(symbol, lower_price, upper_price, num_orders, total_amount,
                                                 total_amount_fraction, distr)
-        results = self.submit_orders(orders)
-        LogInfo.output_list(results)
         client_order_id_header = str(int(time.time()))
         price_scale = transaction_pairs[symbol].price_scale
         algo_order_ids = []
@@ -186,20 +182,18 @@ class Trader(BaseTrader):
     def create_buy_queue(self, symbol, lower_price, upper_price, num_orders,
                          total_amount=None, total_amount_fraction=None, distr=None):
         newest_price = self.get_newest_price(symbol)
-        if lower_price > newest_price:
+        if upper_price > newest_price:
             raise ValueError('Unable to buy at a price higher the the market price')
         if lower_price >= upper_price:
             raise ValueError('lower_price should be less than upper_price')
         orders = self.generate_buy_queue_orders(symbol, lower_price, upper_price, num_orders,
                                                 total_amount, total_amount_fraction, distr)
-        results = self.submit_orders(orders)
-        LogInfo.output_list(results)
-        return results, orders
+        return orders
 
     def create_sell_queue(self, symbol, lower_price, upper_price, num_orders,
                           total_amount=None, total_amount_fraction=None, distr=None):
         newest_price = self.get_newest_price(symbol)
-        if upper_price < newest_price:
+        if lower_price < newest_price:
             raise ValueError('Unable to sell at a price lower the the market price')
         if lower_price >= upper_price:
             raise ValueError('lower_price should be less than upper_price')
@@ -212,10 +206,7 @@ class Trader(BaseTrader):
             amounts = normalized_amounts * balance
         else:
             raise ValueError('One of total_amount or total_amount_fraction should be given')
-        orders = self.generate_orders(symbol, prices, amounts, OrderType.SELL_LIMIT)
-        results = self.submit_orders(orders)
-        LogInfo.output_list(results)
-        return results, orders
+        return self.submit_orders(symbol, prices, amounts, OrderType.SELL_LIMIT)
 
     def cancel_orders(self, symbol, order_ids):
         cancel_results = []

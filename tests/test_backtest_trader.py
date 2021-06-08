@@ -17,6 +17,25 @@ class BacktestTraderTest(unittest.TestCase):
         self.assertAlmostEqual(trader.get_balance('usdt'), 10, 3)
         self.assertAlmostEqual(trader.get_balance('eth'), 90 / 2000 + 0.1, 3)
 
+    def test_submit_order(self):
+        symbol = 'ethusdt'
+        trader = BacktestTrader({'usdt': 100, 'eth': 0.1}, {symbol: 2000})
+        # buy
+        trader.submit_orders(symbol, [1900, 1800], [0.02, 0.01], OrderType.BUY_LIMIT)
+        trader.feed({symbol: 1850})
+        self.assertAlmostEqual(trader.get_balance('eth'), 0.12, 3)
+        trader.feed({symbol: 1860})
+        self.assertAlmostEqual(trader.get_balance('eth'), 0.12, 3)
+        trader.feed({symbol: 1750})
+        self.assertAlmostEqual(trader.get_balance('eth'), 0.13, 3)
+        # sell
+        trader.submit_orders(symbol, [1900, 2000], [0.02, 0.01], OrderType.SELL_LIMIT)
+        trader.feed({symbol: 1950})
+        self.assertAlmostEqual(trader.get_balance('eth'), 0.11, 3)
+        trader.feed({symbol: 2050})
+        self.assertAlmostEqual(trader.get_balance('eth'), 0.10, 3)
+
+
     def test_feed(self):
         symbol = 'ethusdt'
         trader = BacktestTrader({'usdt': 100, 'eth': 0.1}, {symbol: 2000})

@@ -100,6 +100,13 @@ class BacktestTrader(BaseTrader):
         self.orders[order_id] = order
         return order_id
 
+    def submit_orders(self, symbol, prices, amounts, order_type):
+        orders = [
+            self.create_order(symbol, price, order_type, amount)
+            for price, amount in zip(prices, amounts)
+        ]
+        return orders
+
     def cancel_orders(self, symbol, order_ids):
         for order_id in order_ids:
             order = self.orders.get(order_id, None)

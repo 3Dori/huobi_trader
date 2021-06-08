@@ -30,6 +30,10 @@ class BaseTrader(object):
         pass
 
     @abc.abstractmethod
+    def submit_orders(self, symbol, prices, amounts, order_type):
+        pass
+
+    @abc.abstractmethod
     def cancel_orders(self, symbol, order_ids):
         pass
 
