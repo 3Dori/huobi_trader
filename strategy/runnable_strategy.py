@@ -1,5 +1,7 @@
 import abc
+import threading
 import time
+import warnings
 
 from strategy import BaseStrategy
 
@@ -10,6 +12,23 @@ class RunnableStrategy(BaseStrategy, abc.ABC):
             raise ValueError('interval must be greater than 0')
         self.interval = interval
         self.thread = None
+        self._started = False
+        self._stopped = False
+
+    @abc.abstractmethod
+    def start_impl(self, price):
+        pass
+
+    def start(self, price):
+        if self._started:
+            warnings.warn('Strategy already started')
+            return
+        if self.interval is not None:
+            self.thread = threading.Thread(target=self.run, args=())
+            self.thread.start()
+        else:
+            self.start_impl(price)
+        self._started = True
 
     def run(self):
         while True:

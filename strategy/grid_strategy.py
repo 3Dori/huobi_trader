@@ -204,7 +204,7 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
                 self.logger.warning('The newest price has exceeded lower bound of the grid.')
         self.prev_grid = curr_grid
 
-    def pre_start(self, price=None):
+    def start_impl(self, price=None):
         if price is None:
             price = self.trader.get_newest_price(self.symbol)
         self.newest_price = price
@@ -224,17 +224,6 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
         if curr_grid <= self.num_grids:
             self.create_sell_order(curr_grid)    # create initial sell limit order
         self.prev_grid = curr_grid
-
-    def start(self, price=None):
-        if self._started:
-            warnings.warn('Strategy already started')
-            return
-        if self.interval is not None:
-            self.thread = threading.Thread(target=self.run, args=())
-            self.thread.start()
-        else:
-            self.pre_start(price)
-        self._started = True
 
     def check_start_condition(self):
         if self.min_price_to_start is None and self.max_price_to_start is None:

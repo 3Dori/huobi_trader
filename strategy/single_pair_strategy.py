@@ -30,6 +30,7 @@ class SinglePairStrategy(BaseStrategy, abc.ABC):
         self.newest_price = 0
 
     def get_total_asset(self, in_base=False):
+        """Return current available assets of the target and base currency of the symbol."""
         total_asset_in_base = self.base_asset + self.target_asset * self.newest_price
         total_asset_in_target = total_asset_in_base / self.newest_price
         if in_base:

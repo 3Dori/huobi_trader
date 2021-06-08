@@ -22,9 +22,7 @@ class LongShortBot(SinglePairStrategy, RunnableStrategy):
         RunnableStrategy.__init__(self, interval)
         self.window_size = window_size
         self.window_type = window_type
-        window_range = window_size * utils.get_seconds_of_candlestick_interval(window_type)
-        self.aggr = StreamAggr(window_range, window_type='s', metrics=['bollinger'])
-        self.window_start = self.window_end = 0
+        self.aggr = StreamAggr(window_size * utils.get_seconds_of_candlestick_interval(window_type))
         self.num_orders = num_orders
         if lower_profit >= upper_profit:
             raise ValueError('lower_profit must be smaller than upper_profit')
