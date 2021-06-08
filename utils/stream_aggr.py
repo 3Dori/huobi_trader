@@ -92,4 +92,4 @@ class StreamAggr(object):
         return self._sum2 / self._count - self.avg() ** 2
 
     def std(self):
-        return np.sqrt(self.var())
+        return np.sqrt(max(0.0, self.var()))
