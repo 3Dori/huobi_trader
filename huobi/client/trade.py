@@ -74,7 +74,7 @@ class TradeClient(object):
         }
 
         from huobi.service.trade.sub_order_update_v2 import SubOrderUpdateV2Service
-        SubOrderUpdateV2Service(params).subscribe(callback, error_handler, **self.__kwargs)
+        return SubOrderUpdateV2Service(params).subscribe(callback, error_handler, **self.__kwargs)
 
     def req_order_list(self, symbol: 'str', account_id: int, callback, order_states:'str',
                        order_types:'str'=None, start_date:'str'=None, end_date:'str'=None, from_id=None,
@@ -521,7 +521,7 @@ class TradeClient(object):
             example: def error_handler(exception: 'HuobiApiException')
                         pass
 
-        :return:  No return
+        :return: Subscriber
         """
         check_should_not_none(symbols, "symbols")
         symbol_list = symbols.split(",")
@@ -537,4 +537,4 @@ class TradeClient(object):
         }
 
         from huobi.service.trade.sub_trade_clearing_v2 import SubTradeClearingV2Service
-        SubTradeClearingV2Service(params).subscribe(callback, error_handler, **self.__kwargs)
+        return SubTradeClearingV2Service(params).subscribe(callback, error_handler, **self.__kwargs)

@@ -21,11 +21,13 @@ class SubTradeClearingV2Service:
         def parse(dict_data):
             return TradeClearingEvent.json_parse(dict_data)
 
-        SubscribeClient(**kwargs).execute_subscribe_v2(subscription,
-                                            parse,
-                                            callback,
-                                            error_handler,
-                                            is_trade=True)
+        subscriber = SubscribeClient(**kwargs)
+        subscriber.execute_subscribe_v2(subscription,
+                                        parse,
+                                        callback,
+                                        error_handler,
+                                        is_trade=True)
+        return subscriber
 
 
 
