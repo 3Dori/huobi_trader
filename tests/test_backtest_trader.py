@@ -12,6 +12,7 @@ class BacktestTraderTest(unittest.TestCase):
         self.assertRaises(RuntimeError, trader.create_order, symbol, None, OrderType.BUY_MARKET, 2001)
         self.assertRaises(RuntimeError, trader.create_order, symbol, 2001, OrderType.SELL_LIMIT, 0.2)
         self.assertRaises(RuntimeError, trader.create_order, symbol, None, OrderType.SELL_MARKET, 0.2)
+        self.assertRaises(ValueError, trader.create_order, symbol, 1999, OrderType.BUY_LIMIT, 0.0)
         self.assertRaises(TypeError, trader.create_order, symbol, None, OrderType.BUY_LIMIT, 0.01)
         trader.create_order(symbol, None, OrderType.BUY_MARKET, 90)
         self.assertAlmostEqual(trader.get_balance('usdt'), 10, 3)

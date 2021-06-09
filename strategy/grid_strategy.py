@@ -114,10 +114,12 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
         if assumed_asset > self.base_asset:
             diff = assumed_asset - self.base_asset
             amount = diff / self.newest_price
-            self.create_order(None, OrderType.SELL_MARKET, amount)
+            if amount > 10 ** (-self.pair.amount_scale):
+                self.create_order(None, OrderType.SELL_MARKET, amount)
         elif assumed_asset < self.base_asset:
             amount = self.base_asset - assumed_asset
-            self.create_order(None, OrderType.BUY_MARKET, amount)
+            if amount > 10 ** (-self.pair.price_scale):
+                self.create_order(None, OrderType.BUY_MARKET, amount)
 
     def get_newest_grid(self):
         return np.searchsorted(self.grids, self.newest_price)
@@ -178,6 +180,7 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
         elif trade_clearing.orderType in (OrderType.SELL_LIMIT, OrderType.SELL_MARKET):
             self.target_asset -= float(trade_clearing.tradeVolume)
             self.base_asset += float(trade_clearing.tradeVolume) * float(trade_clearing.tradePrice) - float(trade_clearing.transactFee)
+        assert abs(self.base_asset - self.trader.get_balance(self.base_symbol)) <= 1e-4, f'{self.base_asset}, {self.trader.get_balance(self.base_symbol)}'
 
     def feed(self, price):
         if self.take_profit is not None and price > self.take_profit:
