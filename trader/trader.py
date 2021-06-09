@@ -53,6 +53,13 @@ class Trader(BaseTrader):
         return newest_trade.price
 
     def submit_orders(self, symbol, prices, amounts, order_type):
+        """Submit a series of orders to the trader and return their ids.
+
+        symbol -- symbol of trading pair
+        prices -- list of prices of limit orders
+        amounts -- list of amounts of limit orders
+        order_type -- OrderType.BUY_LIMIT or OrderType.SELL_LIMIT
+        """
         client_order_id_header = str(int(time.time()))
         order_ids = [f'{client_order_id_header}{symbol}{i:02d}' for i in range(len(prices))]
         pair = transaction_pairs[symbol]
