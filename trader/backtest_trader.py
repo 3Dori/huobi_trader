@@ -40,17 +40,7 @@ class BackTestSubscription(object):
         self.callback = callback
         self.error_handler = error_handler
 
-    def notify(self, order):
-        from huobi.model.trade import TradeClearing, TradeClearingEvent
-        trade_clearing = TradeClearing()
-        trade_clearing.symbol = order.symbol
-        trade_clearing.orderId = order.id
-        trade_clearing.tradePrice = order.price
-        trade_clearing.tradeVolume = order.filled_amount
-        trade_clearing.transactFee = order.filled_fees
-        trade_clearing.orderType = order.type
-        trade_clearing_event = TradeClearingEvent()
-        trade_clearing_event.data = trade_clearing
+    def notify(self, trade_clearing_event):
         self.callback(trade_clearing_event)
 
 
@@ -88,8 +78,18 @@ class BacktestTrader(BaseTrader):
         return self.orders[order_id]
 
     def notify_all_subscriptions(self, order):
+        from huobi.model.trade import TradeClearing, TradeClearingEvent
+        trade_clearing = TradeClearing()
+        trade_clearing.symbol = order.symbol
+        trade_clearing.orderId = order.id
+        trade_clearing.tradePrice = order.price
+        trade_clearing.tradeVolume = order.filled_amount
+        trade_clearing.transactFee = order.filled_fees
+        trade_clearing.orderType = order.type
+        trade_clearing_event = TradeClearingEvent()
+        trade_clearing_event.data = trade_clearing
         for subscription in self.subscriptions:
-            subscription.notify(order)
+            subscription.notify(trade_clearing_event)
 
     def create_order(self, symbol, price, order_type, amount=None, amount_fraction=None):
         pair = transaction_pairs[symbol]
@@ -118,6 +118,8 @@ class BacktestTrader(BaseTrader):
                 raise RuntimeError(f'Insufficient balance to sell: selling {amount}, remaining {balance}')
         if type(price) not in (float, int, np.float_):
             raise TypeError('price must be of float or int type')
+        if amount <= 0:
+            raise ValueError('amount must be greater than 0')
         if order_type == OrderType.BUY_MARKET:
             self.balance[pair.target] += amount / price * (1 - self.FEE * 2)
             self.balance[pair.base] -= amount
@@ -129,7 +131,7 @@ class BacktestTrader(BaseTrader):
         order = BackTestOrder(order_id, symbol, order_type, price, amount)
         if order_type in (OrderType.BUY_LIMIT, OrderType.SELL_LIMIT):
             self.unfinished_orders[order_id] = order
-        elif order_type in (OrderType.SELL_MARKET, OrderType.SELL_MARKET):
+        elif order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
             self.notify_all_subscriptions(order)
         self.orders[order_id] = order
         return order_id
