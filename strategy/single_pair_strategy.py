@@ -1,6 +1,7 @@
 import abc
 from datetime import datetime
 
+import huobi.model.trade
 from huobi.constant import *
 
 from constants import *
@@ -45,17 +46,18 @@ class SinglePairStrategy(BaseStrategy, abc.ABC):
             if self.enable_logger:
                 self.logger.error(f'Unable to cancel order: {e.args}')
 
+    def handle_trade_clear(self, trade_clearing_event: huobi.model.trade.TradeClearingEvent):
+        trade_clearing = trade_clearing_event.data
+        if trade_clearing.orderType in (OrderType.BUY_LIMIT, OrderType.BUY_MARKET):
+            self.target_asset += float(trade_clearing.tradeVolume) - float(trade_clearing.transactFee)
+            self.base_asset -= float(trade_clearing.tradeVolume) * float(trade_clearing.tradePrice)
+        elif trade_clearing.orderType in (OrderType.SELL_LIMIT, OrderType.SELL_MARKET):
+            self.target_asset -= float(trade_clearing.tradeVolume)
+            self.base_asset += float(trade_clearing.tradeVolume) * float(trade_clearing.tradePrice) - float(trade_clearing.transactFee)
+
     def create_order(self, price, order_type, amount=None):
         try:
             order_id = self.trader.create_order(self.symbol, price, order_type, amount)
-            # if order_type == OrderType.BUY_MARKET:
-            #     order = self.trader.get_order(order_id)
-            #     self.base_asset -= float(order.filled_cash_amount)
-            #     self.target_asset += float(order.filled_amount) - float(order.filled_fees)
-            # elif order_type == OrderType.SELL_MARKET:
-            #     order = self.trader.get_order(order_id)
-            #     self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
-            #     self.target_asset -= float(order.filled_amount)
             if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
                 price = self.newest_price
             if self.enable_logger:

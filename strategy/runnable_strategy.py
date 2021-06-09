@@ -19,7 +19,7 @@ class RunnableStrategy(BaseStrategy, abc.ABC):
     def start_impl(self, price):
         pass
 
-    def start(self, price):
+    def start(self, price=None):
         if self._started:
             warnings.warn('Strategy already started')
             return

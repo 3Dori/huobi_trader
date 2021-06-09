@@ -108,5 +108,5 @@ def monte_carlo_grid_strategy(sims=200):
 
 if __name__ == '__main__':
     monte_carlo_grid_strategy()
-    # basic_monte_carlo_grid_strategy(109)
+    # basic_monte_carlo_grid_strategy(0)
 

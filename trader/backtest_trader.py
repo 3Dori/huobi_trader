@@ -56,12 +56,12 @@ class BacktestTrader(BaseTrader):
         self.unfinished_orders = {}
         self.subscriptions = []
 
-    def add_trader_clearing_subscription(self, symbol, callback, error_handler=None):
+    def add_trade_clearing_subscription(self, symbol, callback, error_handler=None):
         subscription = BackTestSubscription(callback, error_handler)
         self.subscriptions.append(subscription)
         return subscription
 
-    def remove_trader_clearing_subscription(self, subscription):
+    def remove_trade_clearing_subscription(self, subscription):
         self.subscriptions.remove(subscription)
 
     def get_balance(self, symbol='usdt'):

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from constants import *
 from trader.trader import Trader
+from strategy import *
 
 from huobi.constant import *
 

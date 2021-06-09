@@ -10,11 +10,11 @@ class BaseTrader(object):
         pass
 
     @abc.abstractmethod
-    def add_trader_clearing_subscription(self, symbol, callback, error_handler=None):
+    def add_trade_clearing_subscription(self, symbol, callback, error_handler=None):
         pass
 
     @abc.abstractmethod
-    def remove_trader_clearing_subscription(self, subscription):
+    def remove_trade_clearing_subscription(self, subscription):
         pass
 
     @abc.abstractmethod
