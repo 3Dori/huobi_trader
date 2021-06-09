@@ -1,4 +1,5 @@
 import math
+from datetime import datetime
 
 import numpy as np
 
@@ -31,13 +32,12 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
         self.subscription = None
 
     def generate_orders(self, lower_price, upper_price, order_type):
-        target_asset, base_asset = self.trader.get_balance_pair(self.symbol)
         if order_type == OrderType.BUY_LIMIT:
-            asset = base_asset
+            asset = self.base_asset
             num_orders = math.floor(asset * 2 / (lower_price + upper_price) / self.min_order_amount * lower_price)
             amount = 0 if num_orders <= 0 else asset * 2 / (lower_price + upper_price) / num_orders
         elif order_type == OrderType.SELL_LIMIT:
-            asset = target_asset
+            asset = self.target_asset
             num_orders = math.floor(asset * lower_price / self.min_order_amount)
             amount = 0 if num_orders <= 0 else asset / num_orders
         else:
@@ -46,6 +46,26 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
             return []
         prices = np.linspace(lower_price, upper_price, num_orders)
         return self.trader.submit_orders(self.symbol, prices, amounts=[amount] * num_orders, order_type=order_type)
+
+    def print_strategy_info(self):
+        current_asset = self.get_total_asset(in_base=True) if self._started else 1.0
+        initial_total_asset_in_base = self.initial_total_asset_in_base if self._started else 1.0
+        print(f'============ Bollinger tracker strategy =============\n'
+              f'Started at {self.start_time.strftime("%Y/%m/%d %H%:%M:%S")}\n'
+              f'Start assets:\n'
+              f'  Price: {self.initial_price:.{self.pair.price_scale}f}\n'
+              f'  {self.base_symbol}: {self.initial_base_asset:.{self.pair.price_scale}f}\n'
+              f'  {self.target_symbol}: {self.initial_target_asset:.{self.pair.amount_scale}f}\n'
+              f'  In base currency: {initial_total_asset_in_base:.{self.pair.price_scale}f}\n'
+              f'Current assets:\n'
+              f'  Price: {self.newest_price:.{self.pair.price_scale}f}\n'
+              f'  {self.base_symbol}: {self.base_asset:.{self.pair.price_scale}f}\n'
+              f'  {self.target_symbol}: {self.target_asset:.{self.pair.amount_scale}f}\n'
+              f'  In base currency: {current_asset:.{self.pair.price_scale}f}\n'
+              f'Profit:\n'
+              f'  {current_asset - initial_total_asset_in_base:.{self.pair.price_scale}} {self.base_symbol}\n'
+              f'  {(current_asset/initial_total_asset_in_base - 1)*100:.2f}%\n'
+              f'=========================================')
 
     def set_orders(self):
         if self.buy_orders:
@@ -74,8 +94,11 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
             self.last_triggered = time
 
     def start_impl(self, price):
-        self.newest_price = price
         self.trader.add_trade_clearing_subscription(self.symbol, self.handle_trade_clear)
+        self.newest_price = price
+        self.initial_total_asset_in_base = self.get_total_asset(in_base=True)
+        self.initial_price = price
+        self.start_time = datetime.now()
         for timestamp, price in self.trader.get_previous_prices(self.symbol, self.window_type, self.window_size):
             self.aggr.feed(timestamp=timestamp, value=price)
         self.set_orders()
@@ -83,6 +106,6 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
 
     def stop(self):
         self.trader.remove_trade_clearing_subscription(self.subscription)
-        self.trader.cancel_orders(self.buy_orders)
-        self.trader.cancel_orders(self.sell_orders)
+        self.trader.cancel_orders(self.symbol, self.buy_orders)
+        self.trader.cancel_orders(self.symbol, self.sell_orders)
         super().stop()
