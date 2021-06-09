@@ -24,6 +24,7 @@ class RunnableStrategy(BaseStrategy, abc.ABC):
             warnings.warn('Strategy already started')
             return
         if self.interval is not None:
+            self.start_impl(price)
             self.thread = threading.Thread(target=self.run, args=())
             self.thread.start()
         else:
