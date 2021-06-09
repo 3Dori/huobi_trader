@@ -35,6 +35,25 @@ class BackTestOrder(object):
         self.state = OrderState.FILLED
 
 
+class BackTestSubscription(object):
+    def __init__(self, callback, error_handler):
+        self.callback = callback
+        self.error_handler = error_handler
+
+    def notify(self, order):
+        from huobi.model.trade import TradeClearing, TradeClearingEvent
+        trade_clearing = TradeClearing()
+        trade_clearing.symbol = order.symbol
+        trade_clearing.orderId = order.id
+        trade_clearing.tradePrice = order.price
+        trade_clearing.tradeVolume = order.filled_amount
+        trade_clearing.transactFee = order.filled_fees
+        trade_clearing.orderType = order.type
+        trade_clearing_event = TradeClearingEvent()
+        trade_clearing_event.data = trade_clearing
+        self.callback(trade_clearing_event)
+
+
 class BacktestTrader(BaseTrader):
     def __init__(self, balance, init_price, init_time=10000000):
         super().__init__()
@@ -45,6 +64,15 @@ class BacktestTrader(BaseTrader):
         self.newest_prices = init_price
         self.orders = {}
         self.unfinished_orders = {}
+        self.subscriptions = []
+
+    def add_trader_clearing_subscription(self, symbol, callback, error_handler=None):
+        subscription = BackTestSubscription(callback, error_handler)
+        self.subscriptions.append(subscription)
+        return subscription
+
+    def remove_trader_clearing_subscription(self, subscription):
+        self.subscriptions.remove(subscription)
 
     def get_balance(self, symbol='usdt'):
         return self.balance[symbol]
@@ -58,6 +86,10 @@ class BacktestTrader(BaseTrader):
 
     def get_order(self, order_id):
         return self.orders[order_id]
+
+    def notify_all_subscriptions(self, order):
+        for subscription in self.subscriptions:
+            subscription.notify(order)
 
     def create_order(self, symbol, price, order_type, amount=None, amount_fraction=None):
         pair = transaction_pairs[symbol]
@@ -97,6 +129,8 @@ class BacktestTrader(BaseTrader):
         order = BackTestOrder(order_id, symbol, order_type, price, amount)
         if order_type in (OrderType.BUY_LIMIT, OrderType.SELL_LIMIT):
             self.unfinished_orders[order_id] = order
+        elif order_type in (OrderType.SELL_MARKET, OrderType.SELL_MARKET):
+            self.notify_all_subscriptions(order)
         self.orders[order_id] = order
         return order_id
 
@@ -138,16 +172,18 @@ class BacktestTrader(BaseTrader):
                 if symbol == order.symbol:
                     assert order.type in (OrderType.BUY_LIMIT, OrderType.SELL_LIMIT)
                     if order.type == OrderType.BUY_LIMIT and price <= order.price:
-                        filled_cash_amount = order.amount * price
+                        filled_cash_amount = order.amount * order.price
                         self.balance[pair.target] += order.amount * (1 - self.FEE)
                         self.balance[pair.base] -= filled_cash_amount
                         finished_order_ids.append(order_id)
                         self.orders[order_id].set_finished(order.amount, order.amount * self.FEE, filled_cash_amount)
+                        self.notify_all_subscriptions(self.orders[order_id])
                     elif order.type == OrderType.SELL_LIMIT and price >= order.price:
-                        filled_cash_amount = order.amount * price
+                        filled_cash_amount = order.amount * order.price
                         self.balance[pair.target] -= order.amount
                         self.balance[pair.base] += filled_cash_amount * (1 - self.FEE)
                         finished_order_ids.append(order_id)
                         self.orders[order_id].set_finished(order.amount, filled_cash_amount * self.FEE, filled_cash_amount)
+                        self.notify_all_subscriptions(self.orders[order_id])
             for order_id in finished_order_ids:
                 del self.unfinished_orders[order_id]

@@ -66,6 +66,7 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
         self.max_price_to_start = max_price_to_start
 
         self.prev_grid = -1
+        self.subscription = None
 
     def print_strategy_info(self):
         current_asset = self.get_total_asset(in_base=True) if self._started else 1.0
@@ -158,16 +159,25 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
                              f'price: {float(order.price):.{self.pair.price_scale}f}; '
                              f'amount: {float(order.filled_amount):.{self.pair.amount_scale}f}')
         self.num_finished_orders += 1
-        if order.type == OrderType.BUY_LIMIT:
-            self.target_asset += float(order.filled_amount) - float(order.filled_fees)
-            self.base_asset -= float(order.filled_cash_amount)
-        elif order.type == OrderType.SELL_LIMIT:
-            self.target_asset -= float(order.filled_amount)
-            self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
+        # if order.type == OrderType.BUY_LIMIT:
+        #     self.target_asset += float(order.filled_amount) - float(order.filled_fees)
+        #     self.base_asset -= float(order.filled_cash_amount)
+        # elif order.type == OrderType.SELL_LIMIT:
+        #     self.target_asset -= float(order.filled_amount)
+        #     self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
         self.cancel_orders([order for order in self.orders if order is not None and order != order_id])
         self.orders = [None] * len(self.grids)
         self.curr_sell_order_id = None
         self.curr_buy_order_id = None
+
+    def handle_trade_clear(self, trade_clearing_event):
+        trade_clearing = trade_clearing_event.data
+        if trade_clearing.orderType in (OrderType.BUY_LIMIT, OrderType.BUY_MARKET):
+            self.target_asset += float(trade_clearing.tradeVolume) - float(trade_clearing.transactFee)
+            self.base_asset -= float(trade_clearing.tradeVolume) * float(trade_clearing.tradePrice)
+        elif trade_clearing.orderType in (OrderType.SELL_LIMIT, OrderType.SELL_MARKET):
+            self.target_asset -= float(trade_clearing.tradeVolume)
+            self.base_asset += float(trade_clearing.tradeVolume) * float(trade_clearing.tradePrice) - float(trade_clearing.transactFee)
 
     def feed(self, price):
         if self.take_profit is not None and price > self.take_profit:
@@ -205,6 +215,7 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
         self.prev_grid = curr_grid
 
     def start_impl(self, price=None):
+        self.trader.add_trader_clearing_subscription(self.symbol, self.handle_trade_clear, None)
         if price is None:
             price = self.trader.get_newest_price(self.symbol)
         self.newest_price = price
@@ -241,6 +252,7 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
             time.sleep(self.interval)
 
     def stop(self, sell_at_market_price=False):
+        self.trader.remove_trader_clearing_subscription()
         if sell_at_market_price:
             self.create_order(None, OrderType.SELL_MARKET, self.target_asset)
         self.logger.info('Stopping grid strategy')

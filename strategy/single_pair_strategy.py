@@ -48,14 +48,14 @@ class SinglePairStrategy(BaseStrategy, abc.ABC):
     def create_order(self, price, order_type, amount=None):
         try:
             order_id = self.trader.create_order(self.symbol, price, order_type, amount)
-            if order_type == OrderType.BUY_MARKET:
-                order = self.trader.get_order(order_id)
-                self.base_asset -= float(order.filled_cash_amount)
-                self.target_asset += float(order.filled_amount) - float(order.filled_fees)
-            elif order_type == OrderType.SELL_MARKET:
-                order = self.trader.get_order(order_id)
-                self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
-                self.target_asset -= float(order.filled_amount)
+            # if order_type == OrderType.BUY_MARKET:
+            #     order = self.trader.get_order(order_id)
+            #     self.base_asset -= float(order.filled_cash_amount)
+            #     self.target_asset += float(order.filled_amount) - float(order.filled_fees)
+            # elif order_type == OrderType.SELL_MARKET:
+            #     order = self.trader.get_order(order_id)
+            #     self.base_asset += float(order.filled_cash_amount) - float(order.filled_fees)
+            #     self.target_asset -= float(order.filled_amount)
             if order_type in (OrderType.BUY_MARKET, OrderType.SELL_MARKET):
                 price = self.newest_price
             if self.enable_logger:
