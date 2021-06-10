@@ -54,6 +54,9 @@ class SinglePairStrategy(BaseStrategy, abc.ABC):
         elif trade_clearing.orderType in (OrderType.SELL_LIMIT, OrderType.SELL_MARKET):
             self.target_asset -= float(trade_clearing.tradeVolume)
             self.base_asset += float(trade_clearing.tradeVolume) * float(trade_clearing.tradePrice) - float(trade_clearing.transactFee)
+        if self.enable_logger:
+            self.logger.info(f'Order filled: type={trade_clearing.orderType}, '
+                             f'amount={trade_clearing.tradeVolume}, price={trade_clearing.tradePrice}')
 
     def create_order(self, price, order_type, amount=None):
         try:
