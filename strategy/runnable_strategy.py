@@ -52,3 +52,6 @@ class RunnableStrategy(BaseStrategy, abc.ABC):
         if self._started:
             self._stopped = True
             self.exit.set()
+
+    def __del__(self):
+        self.stop()
