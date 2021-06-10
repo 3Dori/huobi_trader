@@ -3,6 +3,7 @@ from datetime import datetime
 
 import numpy as np
 
+import huobi.model.trade
 from huobi.constant import *
 
 from strategy.single_pair_strategy import SinglePairStrategy
@@ -46,6 +47,11 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
             return []
         prices = np.linspace(lower_price, upper_price, num_orders)
         return self.trader.submit_orders(self.symbol, prices, amounts=[amount] * num_orders, order_type=order_type)
+
+    def handle_trade_clear(self, trade_clearing_event: huobi.model.trade.TradeClearingEvent):
+        trade_clearing = trade_clearing_event.data
+        if trade_clearing.tradeId in self.buy_orders or trade_clearing.tradeId in self.sell_orders:
+            super().handle_trade_clear(trade_clearing_event)
 
     def print_strategy_info(self):
         current_asset = self.get_total_asset(in_base=True) if self._started else 1.0
