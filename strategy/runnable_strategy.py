@@ -14,12 +14,15 @@ class RunnableStrategy(BaseStrategy, abc.ABC):
         self.thread = None
         self._started = False
         self._stopped = False
+        self.exit = threading.Event()
 
     @abc.abstractmethod
     def start_impl(self, price):
         pass
 
     def start(self, price=None):
+        if price is None:
+            price = self.trader.get_newest_price(self.symbol)
         if self._started:
             warnings.warn('Strategy already started')
             return
@@ -33,18 +36,19 @@ class RunnableStrategy(BaseStrategy, abc.ABC):
 
     def run(self):
         while True:
+            self.exit.wait(self.interval)
             if self._stopped:
-                if self.enable_logger:
-                    self.logger.info('Strategy successfully stopped')
-                return
+                break
             try:
                 newest_price = self.trader.get_newest_price(self.symbol)
                 self.feed(newest_price)
             except RuntimeError:
                 if self.enable_logger:
                     self.logger.error('Unable to read the newest price from the trader')
-            time.sleep(self.interval)
+        if self.enable_logger:
+            self.logger.info('Strategy successfully stopped')
 
     def stop(self):
         if self._started:
             self._stopped = True
+            self.exit.set()
