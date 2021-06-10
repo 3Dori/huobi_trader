@@ -203,8 +203,6 @@ class GridStrategy(SinglePairStrategy, RunnableStrategy):
 
     def start_impl(self, price=None):
         self.trader.add_trade_clearing_subscription(self.symbol, self.handle_trade_clear, None)
-        if price is None:
-            price = self.trader.get_newest_price(self.symbol)
         self.newest_price = price
         self.initial_total_asset_in_base = self.get_total_asset(in_base=True)
         self.initial_price = price

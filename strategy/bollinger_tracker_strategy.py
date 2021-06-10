@@ -93,7 +93,7 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
             self.set_orders()
             self.last_triggered = time
 
-    def start_impl(self, price):
+    def start_impl(self, price=None):
         self.trader.add_trade_clearing_subscription(self.symbol, self.handle_trade_clear)
         self.newest_price = price
         self.initial_total_asset_in_base = self.get_total_asset(in_base=True)
@@ -106,6 +106,6 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
 
     def stop(self):
         self.trader.remove_trade_clearing_subscription(self.subscription)
-        self.trader.cancel_orders(self.symbol, self.buy_orders)
-        self.trader.cancel_orders(self.symbol, self.sell_orders)
+        self.trader.cancel_orders(self.symbol, [order.order_id for order in self.buy_orders])
+        self.trader.cancel_orders(self.symbol, [order.order_id for order in self.sell_orders])
         super().stop()

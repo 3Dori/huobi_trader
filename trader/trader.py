@@ -29,6 +29,14 @@ class Trader(BaseTrader):
         self.latest_timestamp = 0
         self.client_id_counter = 0
         self.verbose = verbose
+        self.subscription = None
+
+    def add_trade_clearing_subscription(self, symbol, callback, error_handler=None):
+        self.subscription = self.trade_client.sub_trade_clearing(symbol, callback, error_handler)
+        return self.subscription
+
+    def remove_trade_clearing_subscription(self, subscription):
+        self.subscription.unsubscribe_all()
 
     def get_balance(self, symbol='usdt'):
         balances = self.account_client.get_balance(self.account_id)
@@ -81,7 +89,7 @@ class Trader(BaseTrader):
             create_results = self.trade_client.batch_create_order(order_config_list=orders[i:i+MAX_ORDER_NUM])
             results += create_results
         LogInfo.output_list(results)
-        return orders
+        return results
 
     @staticmethod
     def get_normalized_amounts_with_eagerness(num_orders, eagerness=1.0):
