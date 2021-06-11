@@ -80,9 +80,9 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
 
     def set_orders(self):
         if self.buy_orders:
-            self.trader.cancel_orders(self.symbol, self.buy_orders)
+            self.trader.cancel_orders(self.symbol, [order.order_id for order in self.buy_orders])
         if self.sell_orders:
-            self.trader.cancel_orders(self.symbol, self.sell_orders)
+            self.trader.cancel_orders(self.symbol, [order.order_id for order in self.sell_orders])
         ma = self.aggr.avg()
         std = self.aggr.std()
         lower_buy_price = ma - std * self.upper_std_scale
