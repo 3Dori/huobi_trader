@@ -36,7 +36,12 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
         if order_type == OrderType.BUY_LIMIT:
             asset = self.base_asset
             num_orders = math.floor(asset * 2 / (lower_price + upper_price) / self.min_order_amount * lower_price)
-            amount = 0 if num_orders <= 0 else asset * 2 / (lower_price + upper_price) / num_orders
+            if num_orders <= 0:
+                amount = 0
+            elif num_orders == 1:
+                amount = asset / lower_price / self.min_order_amount
+            else:
+                amount = asset * 2 / (lower_price + upper_price) / num_orders
         elif order_type == OrderType.SELL_LIMIT:
             asset = self.target_asset
             num_orders = math.floor(asset * lower_price / self.min_order_amount)
@@ -50,7 +55,7 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
 
     def handle_trade_clear(self, trade_clearing_event: huobi.model.trade.TradeClearingEvent):
         trade_clearing = trade_clearing_event.data
-        if trade_clearing.tradeId in self.buy_orders or trade_clearing.tradeId in self.sell_orders:
+        if trade_clearing.orderId in self.buy_orders or trade_clearing.orderId in self.sell_orders:
             super().handle_trade_clear(trade_clearing_event)
 
     def print_strategy_info(self):
@@ -82,13 +87,17 @@ class BollingerTrackerStrategy(SinglePairStrategy, RunnableStrategy):
         std = self.aggr.std()
         lower_buy_price = ma - std * self.upper_std_scale
         upper_buy_price = ma - std * self.lower_std_scale
-        if upper_buy_price >= self.newest_price:
-            upper_buy_price = self.newest_price / self.price_modifier
+        while upper_buy_price >= self.newest_price:
+            upper_buy_price /= self.price_modifier
+        while lower_buy_price >= upper_buy_price:
+            lower_buy_price /= self.price_modifier
         self.buy_orders = self.generate_orders(lower_buy_price, upper_buy_price, OrderType.BUY_LIMIT)
         lower_sell_price = ma + std * self.lower_std_scale
         upper_sell_price = ma + std * self.upper_std_scale
-        if lower_sell_price <= self.newest_price:
-            lower_sell_price = self.newest_price * self.price_modifier
+        while lower_sell_price <= self.newest_price:
+            lower_sell_price *= self.price_modifier
+        while upper_sell_price <= lower_sell_price:
+            upper_sell_price *= self.price_modifier
         self.sell_orders = self.generate_orders(lower_sell_price, upper_sell_price, OrderType.SELL_LIMIT)
 
     def feed(self, price):
